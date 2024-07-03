@@ -122,6 +122,8 @@ final public class AsyncOperationQueue {
   /// Current state.
   public private(set) var state: AsyncOperationQueue.State = .waiting
 
+  /// The queue of operations. The operations will be executed in the order of enqueue. The `id` is used to identify the 
+  /// operation in the queue, only used for debugging purpose.
   @ThreadSafe
   var queue: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
 
@@ -178,8 +180,7 @@ final public class AsyncOperationQueue {
     head.continuation.resume(returning: ())
   }
 
-  func processConcurrent(queue: inout [(id: UUID, continuation: CheckedContinuation<Void, Never>)])
-  {
+  func processConcurrent(queue: inout [(id: UUID, continuation: CheckedContinuation<Void, Never>)]) {
     guard case .concurrent(let limit) = mode else {
       return
     }
