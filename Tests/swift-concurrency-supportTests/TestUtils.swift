@@ -13,10 +13,6 @@ import RxSwift
   @testable import swift_concurrency_support
 #endif
 
-#if canImport(swift_concurrency_support_test)
-  import swift_concurrency_support_test
-#endif
-
 #if canImport(SwiftConcurrencySupport)
   @testable import SwiftConcurrencySupport
 #endif

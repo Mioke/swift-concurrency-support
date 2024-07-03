@@ -8,7 +8,7 @@ let package = Package(
     products: [
       // Products define the executables and libraries a package produces, making them visible to other packages.
       .library(
-        name: "swift-concurrency-support",
+        name: "SwiftConcurrencySupport",
         targets: ["swift-concurrency-support"]),
     ], 
     dependencies: [
