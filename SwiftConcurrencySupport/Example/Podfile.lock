@@ -1,0 +1,35 @@
+PODS:
+  - RxCocoa (6.7.1):
+    - RxRelay (= 6.7.1)
+    - RxSwift (= 6.7.1)
+  - RxRelay (6.7.1):
+    - RxSwift (= 6.7.1)
+  - RxSwift (6.7.1)
+  - SwiftConcurrencySupport (0.1.0)
+  - SwiftConcurrencySupport/Tests (0.1.0):
+    - RxCocoa (~> 6.0)
+    - RxSwift (~> 6.0)
+
+DEPENDENCIES:
+  - SwiftConcurrencySupport (from `../../`)
+  - SwiftConcurrencySupport/Tests (from `../../`)
+
+SPEC REPOS:
+  trunk:
+    - RxCocoa
+    - RxRelay
+    - RxSwift
+
+EXTERNAL SOURCES:
+  SwiftConcurrencySupport:
+    :path: "../../"
+
+SPEC CHECKSUMS:
+  RxCocoa: f5609cb4637587a7faa99c5d5787e3ad582b75a4
+  RxRelay: 4151ba01152436b08271e08410135e099880eae5
+  RxSwift: b9a93a26031785159e11abd40d1a55bcb8057e52
+  SwiftConcurrencySupport: 5fa79bb80fea51dc131a1e354896370b6dc86d60
+
+PODFILE CHECKSUM: a6351fb75302ad370cf4feccf037796853d51e4b
+
+COCOAPODS: 1.15.2
