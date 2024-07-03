@@ -11,10 +11,6 @@ import Foundation
 import XCTest
 import os
 
-#if canImport(swift_concurrency_support)
-  @testable import swift_concurrency_support
-#endif
-
 #if canImport(SwiftConcurrencySupport)
   @testable import SwiftConcurrencySupport
 #endif

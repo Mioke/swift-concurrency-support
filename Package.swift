@@ -4,12 +4,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "swift-concurrency-support",
+    name: "SwiftConcurrencySupport",
     products: [
       // Products define the executables and libraries a package produces, making them visible to other packages.
       .library(
         name: "SwiftConcurrencySupport",
-        targets: ["swift-concurrency-support"]),
+        targets: ["SwiftConcurrencySupport"]),
     ], 
     dependencies: [
       .package(url: "https://github.com/ReactiveX/RxSwift.git", .upToNextMajor(from: "6.0.0"))
@@ -18,11 +18,11 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "swift-concurrency-support"),
+            name: "SwiftConcurrencySupport"),
         .testTarget(
-            name: "swift-concurrency-supportTests",
+            name: "SwiftConcurrencySupportTests",
             dependencies: [
-              "swift-concurrency-support",
+              "SwiftConcurrencySupport",
               .product(name: "RxCocoa", package: "RxSwift")
             ]),
     ]
