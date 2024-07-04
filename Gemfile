@@ -1,3 +1,9 @@
 source "https://rubygems.org"
 
-# gem 'swift-format'
+# for vscode ruby debugging and development
+gem "solargraph"
+gem "standard", ">= 1.35.1"
+
+group :development, :test do
+  gem "debug"
+end
