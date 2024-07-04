@@ -20,62 +20,78 @@ final public class TaskQueue<Element> {
   private var isRunning: Bool = false
 
   struct TaskItem {
-    let id: String
-    let task: () async -> Element
+    let id: UUID
+    let originalTask: () async throws -> Element
+    let postCheck: () -> Void
+    
+    func task() async throws -> Element {
+      let result = try await originalTask()
+      postCheck()
+      return result
+    }
   }
 
   /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
   /// - Parameters:
-  ///   - id: Task id
+  ///   - id: Task id, for tracking purpose.
   ///   - task: The task you want to enqueue.
   ///   - onFinished: Finish callback closure. If the result is nil, that means the `TaskQueue` has already been
   ///   deallocated before this task is finished.
-  public func addTask(id: String, _ task: @escaping () async -> Element, onFinished: @escaping (Element?) -> Void) {
+  public func addTask(
+    id: UUID = .init(),
+    _ task: @escaping () async throws -> Element,
+    onFinished: @escaping (Result<Element, Swift.Error>) -> Void
+  ) {
     let item = enqueueTask(with: id, task: task)
-    let checkInvalidSelf = checkNil(self, throwing: _Concurrency.CancellationError())
     Task { [weak self] in
       await self?.waitUntilAvailable(item: item)()
-      let result = try? await checkAround(checkInvalidSelf) { await item.task() }
-      onFinished(result)
+      do {
+        if self == nil { throw _Concurrency.CancellationError() }
+        onFinished(.success(try await item.task()))
+      } catch {
+        onFinished(.failure(error))
+      }
     }
   }
 
-  /// Enqueue a task and wait for it's result.
+  /// Enqueue a task and wait for it's result. If the task has already began, this function will return the result even
+  /// the queue is deallocated.
   /// - Parameters:
-  ///   - id: Task id
+  ///   - id: Task id, for tracking purpose.
   ///   - task: The task you want to enqueue.
   /// - Returns: The task's result.
-  public func task(id: String, _ task: @escaping () async -> Element) async -> Element {
+  public func task(id: UUID = .init(), _ task: @escaping () async throws -> Element) async rethrows -> Element {
     let item = enqueueTask(with: id, task: task)
     // The `await`s here will capture `self` and delay the deallocation if the queue has no other owners.
     await waitUntilAvailable(item: item)()
-    return await item.task()
+    // for the `rethrows` feature, can only call the parameter task here.
+    let result = try await task()
+    item.postCheck()
+    return result
   }
 
   /// Enqueue a task and try to run it immediately.
   /// - Parameters:
-  ///   - id: Task's id
+  ///   - id: Task's id, for tracking purpose.
   ///   - task: The task.
   /// - Returns: The wrapped Task.
-  public func enqueueTask(id: String, task: @escaping () async -> Element) -> Task<Element, Error> {
+  public func enqueueTask(id: UUID = .init(), task: @escaping () async throws -> Element) -> Task<Element, Error> {
     let item = enqueueTask(with: id, task: task)
-    let checkInvalidSelf = checkNil(self, throwing: _Concurrency.CancellationError())
     return .init { [weak self] in
       await self?.waitUntilAvailable(item: item)()
-      return try await checkAround(checkInvalidSelf) { await item.task() }
+      if self == nil { throw _Concurrency.CancellationError() }
+      return try await item.task()
     }
   }
 
-  private func enqueueTask(with id: String, task: @escaping () async -> Element) -> TaskItem {
+  private func enqueueTask(with id: UUID, task: @escaping () async throws -> Element) -> TaskItem {
     let item = TaskItem(
       id: id,
-      task: { [weak self] in
-        let result = await task()
-        if let self {
-          self.isRunning = false
-          self.checkNext()
-        }
-        return result
+      originalTask: task,
+      postCheck: { [weak self] in
+        guard let self else { return }
+        isRunning = false
+        checkNext()
       })
     _array.write { array in
       array.append(item)
@@ -83,6 +99,7 @@ final public class TaskQueue<Element> {
     return item
   }
 
+  /// The `await` for the block returned here will immediately pass when `self` is deallocated.
   private func waitUntilAvailable(item: TaskItem) -> () async -> Void {
     // weak capture `self`, otherwise if any signal is waiting, the `TaskQueue` can't be deallocated.
     return { [weak self] in

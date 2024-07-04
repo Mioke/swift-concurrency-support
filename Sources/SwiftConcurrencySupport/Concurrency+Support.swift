@@ -20,8 +20,7 @@ public class AsyncThrowingSignalStream<T> {
     case haventWaitedForValue
   }
 
-  private var continuations:
-    [(condition: (T) -> Bool, continuation: CheckedContinuation<T, any Error>)] = []
+  private var continuations: [(condition: (T) -> Bool, continuation: CheckedContinuation<T, any Error>)] = []
 
   public init() {}
 
@@ -193,9 +192,7 @@ extension Task where Failure == any Error {
     weakCapturing object: T,
     priority: TaskPriority? = nil,
     operation: @escaping (T) async throws -> Success
-  )
-    -> Self
-  where T: AnyObject, Failure == any Error {
+  ) -> Self where T: AnyObject, Failure == any Error {
     self.detached(priority: priority) { [weak object] in
       guard let object else { throw CustomError.capturingObjectReleased }
       return try await operation(object)

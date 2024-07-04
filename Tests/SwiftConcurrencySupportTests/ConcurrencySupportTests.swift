@@ -464,7 +464,7 @@ class TaskQueueTestCases: XCTestCase {
     let assuming = (0..<10).reduce(into: Array<Int>.init()) { $0.append($1) }
 
     for index in assuming {
-      let task = queue.enqueueTask(id: "\(index)") {
+      let task = queue.enqueueTask {
         try! await Task.sleep(for: .seconds(1))
         print("running", index)
         return index
@@ -475,17 +475,14 @@ class TaskQueueTestCases: XCTestCase {
     try! await Task.sleep(for: .seconds(5))
     print("Start to observe.")
 
-    var results: [Int] = []
-    for task in tasks {
-      results.append(try await task.value)
-    }
+    let results = try await tasks.asyncMap { try await $0.value }
 
     XCTAssert(results == assuming)
   }
 
   func testThrowingQueue() async throws {
     let queue = ThrowingTaskQueue<Int, Swift.Error>()
-    let task = queue.enqueueTask(id: "1") {
+    let task = queue.enqueueTask {
       return .failure(NSError(domain: "1", code: 1))
     }
     if case .failure = try await task.value {
@@ -504,22 +501,22 @@ class TaskQueueTestCases: XCTestCase {
       return counts
     }
 
-    async let result1 = queue.task(id: "1") {
+    async let result1 = queue.task {
       print("run 1")
       return getCounts()
     }
-    async let result2 = queue.task(id: "2") {
+    async let result2 = queue.task {
       print("run 2")
       return getCounts()
     }
 
     //        print(await result1, await result2)
 
-    let result3 = await queue.task(id: "3") {
+    let result3 = await queue.task {
       print("run 3")
       return getCounts()
     }
-    let result4 = await queue.task(id: "4") {
+    let result4 = await queue.task {
       print("run 4")
       return getCounts()
     }
@@ -542,26 +539,26 @@ class TaskQueueTestCases: XCTestCase {
 
     var order: [Int] = []
 
-    let result1 = await queue.task(id: "1") {
+    let result1 = await queue.task {
       print("run 1")
       let value = getCounts()
       order.append(value)
       return value
     }
-    let result2 = await queue.task(id: "2") {
+    let result2 = await queue.task {
       print("run 2")
       let value = getCounts()
       order.append(value)
       return value
     }
 
-    let result3 = await queue.task(id: "3") {
+    let result3 = await queue.task {
       print("run 3")
       let value = getCounts()
       order.append(value)
       return value
     }
-    let result4 = await queue.task(id: "4") {
+    let result4 = await queue.task {
       print("run 4")
       let value = getCounts()
       order.append(value)
@@ -578,13 +575,13 @@ class TaskQueueTestCases: XCTestCase {
   func testDeallocation1() async {
     let expect = XCTestExpectation()
     Task {
-      let result = await self.queue?.task(id: "1") {
+      let result = await self.queue?.task {
         do {
           try await Task.sleep(for: .seconds(5))
         } catch {
           print("error", error)
         }
-        print(self.queue == nil)
+        XCTAssert(self.queue == nil)
         return 1
       }
       print(result)
@@ -614,7 +611,7 @@ class TaskQueueTestCases: XCTestCase {
       return 1
     }
 
-    if let task = self.queue?.enqueueTask(id: "1", task: op) {
+    if let task = self.queue?.enqueueTask(task: op) {
 
       Task {
         try await Task.sleep(for: .seconds(1))
@@ -646,8 +643,8 @@ class TaskQueueTestCases: XCTestCase {
       return 2
     }
 
-    if let task1 = self.queue?.enqueueTask(id: "1", task: op1),
-      let task2 = self.queue?.enqueueTask(id: "2", task: op2)
+    if let task1 = self.queue?.enqueueTask(task: op1),
+      let task2 = self.queue?.enqueueTask(task: op2)
     {
 
       Task {
@@ -674,19 +671,26 @@ class TaskQueueTestCases: XCTestCase {
     let expect = XCTestExpectation()
 
     if let queue = self.queue {
-      queue.addTask(id: "1") {
+      queue.addTask {
         try! await Task.sleep(for: .seconds(5))
         return 1
       } onFinished: { result in
-        XCTAssert(result == nil)
+        print("1 on finished \(result)")
+        do {
+          let result = try result.get()
+          XCTAssert(result == 1)
+        } catch {
+          XCTAssert(false)
+        }
+        expect.fulfill()
       }
 
-      queue.addTask(id: "2") {
+      queue.addTask {
         try! await Task.sleep(for: .seconds(3))
         return 2
       } onFinished: { result in
-        XCTAssert(result == nil)
-        expect.fulfill()
+        print("2 on finished \(result)")
+        XCTAssert(result.error() != nil)
       }
 
       Task {

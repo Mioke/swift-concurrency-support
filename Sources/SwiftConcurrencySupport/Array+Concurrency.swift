@@ -27,9 +27,7 @@ extension Array {
   ///  conversions asynchronously.
   /// - Parameter conversion: The transform conversion closure.
   /// - Returns: An array containing the transformed elements of this sequence.
-  public func concurrentMap<T>(_ conversion: @escaping (Element) async throws -> T) async throws
-    -> [T]
-  {
+  public func concurrentMap<T>(_ conversion: @escaping (Element) async throws -> T) async throws -> [T] {
     var results: [T] = []
     let tasks = map { item in
       Task { try await conversion(item) }

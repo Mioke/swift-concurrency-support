@@ -61,3 +61,15 @@ extension Reactive where Base: AnyObject {
     return disposeBag
   }
 }
+
+extension Result {
+  
+  func error() -> Failure? {
+    switch self {
+    case .success(let success):
+      return nil
+    case .failure(let failure):
+      return failure
+    }
+  }
+}
