@@ -66,7 +66,7 @@ extension Result {
   
   func error() -> Failure? {
     switch self {
-    case .success(let success):
+    case .success(_):
       return nil
     case .failure(let failure):
       return failure

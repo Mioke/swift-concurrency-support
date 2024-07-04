@@ -475,7 +475,10 @@ class TaskQueueTestCases: XCTestCase {
     try! await Task.sleep(for: .seconds(5))
     print("Start to observe.")
 
-    let results = try await tasks.asyncMap { try await $0.value }
+    var results: [Int] = []
+    for task in tasks {
+      results.append(try await task.value)
+    }
 
     XCTAssert(results == assuming)
   }
@@ -584,7 +587,7 @@ class TaskQueueTestCases: XCTestCase {
         XCTAssert(self.queue == nil)
         return 1
       }
-      print(result)
+      XCTAssert(result == 1)
       expect.fulfill()
     }
 
@@ -643,7 +646,7 @@ class TaskQueueTestCases: XCTestCase {
       return 2
     }
 
-    if let task1 = self.queue?.enqueueTask(task: op1),
+    if let _ = self.queue?.enqueueTask(task: op1),
       let task2 = self.queue?.enqueueTask(task: op2)
     {
 
@@ -651,7 +654,7 @@ class TaskQueueTestCases: XCTestCase {
         try await Task.sleep(for: .seconds(1))
         weak var tempQueue = self.queue
         self.queue = nil
-        print("set to nil", tempQueue)
+        print("set to nil", tempQueue as Any)
       }
       Task {
         do {
@@ -672,10 +675,9 @@ class TaskQueueTestCases: XCTestCase {
 
     if let queue = self.queue {
       queue.addTask {
-        try! await Task.sleep(for: .seconds(5))
+        try! await Task.sleep(for: .seconds(3))
         return 1
       } onFinished: { result in
-        print("1 on finished \(result)")
         do {
           let result = try result.get()
           XCTAssert(result == 1)
@@ -689,8 +691,12 @@ class TaskQueueTestCases: XCTestCase {
         try! await Task.sleep(for: .seconds(3))
         return 2
       } onFinished: { result in
-        print("2 on finished \(result)")
-        XCTAssert(result.error() != nil)
+        do {
+          _ = try result.get()
+          XCTAssert(false)
+        } catch {
+          XCTAssert(error is CancellationError)
+        }
       }
 
       Task {

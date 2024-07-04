@@ -91,3 +91,4 @@ iOSInjectionProject/
 
 .rdbgrc.breakpoints
 .vscode/
+Gemfile.lock
