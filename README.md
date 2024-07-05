@@ -1,4 +1,9 @@
+
 # swift-concurrency-support
+
+[![SwiftConcurrencySupport](https://github.com/Mioke/swift-concurrency-support/actions/workflows/swift.yml/badge.svg?branch=master)](https://github.com/Mioke/swift-concurrency-support/actions/workflows/swift.yml)
+![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
+![Supported Platforms: iOS, macOS, tvOS, watchOS & Linux](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20Linux-333333.svg)
 
 ## Install
 

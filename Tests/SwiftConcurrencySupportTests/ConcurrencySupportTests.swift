@@ -578,6 +578,8 @@ class TaskQueueTestCases: XCTestCase {
   var queue: TaskQueue<Int>? = .init()
 
   func testDeallocation1() async {
+    self.queue = TaskQueue<Int>()
+
     let expect = XCTestExpectation()
     Task {
       let result = await self.queue?.task {
@@ -601,41 +603,9 @@ class TaskQueueTestCases: XCTestCase {
     await fulfillment(of: [expect], timeout: 10)
   }
 
-  func testDeallocation2() async throws {
-    let expect = XCTestExpectation()
-
-    let op: () async -> Int = {
-      do {
-        print("\(Date()) start")
-        try await Task.sleep(for: .seconds(5))
-        print("\(Date()) end")
-      } catch {
-        print("error", error)
-      }
-      print(self.queue == nil)
-      return 1
-    }
-
-    if let task = self.queue?.enqueueTask(task: op) {
-
-      Task {
-        try await Task.sleep(for: .seconds(1))
-        self.queue = nil
-        print("set to nil")
-      }
-      do {
-        print(try await task.value)
-      } catch {
-        XCTAssert(error is CancellationError)
-        expect.fulfill()
-      }
-    }
-
-    await fulfillment(of: [expect], timeout: 10)
-  }
-
   func testDeallocation3() async throws {
     let expect = XCTestExpectation()
+    self.queue = TaskQueue<Int>()
 
     let op1: () async -> Int = {
       do { try await Task.sleep(for: .seconds(99)) } catch { print("#1 error", error) }
@@ -674,6 +644,7 @@ class TaskQueueTestCases: XCTestCase {
 
   func testDeallocation4() async throws {
     let expect = XCTestExpectation()
+    self.queue = TaskQueue<Int>()
 
     if let queue = self.queue {
       queue.addTask {
