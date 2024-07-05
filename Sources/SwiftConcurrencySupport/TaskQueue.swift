@@ -7,12 +7,19 @@
 
 import Foundation
 
+@available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
+public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Result<Value, E>>
+
 /// Run tasks one by one, FIFO.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 final public class TaskQueue<Element> {
 
   @ThreadSafe
   private var array: [TaskItem] = []
+  
+  private var metrics: [UUID: TaskQueue.Metrics] = [:]
+  private var metricsCacheIndex: [UUID] = []
+  public var metricsCacheSize: Int = 10
 
   private var stream: AsyncMulticast<TaskItem> = .init()
 
@@ -23,7 +30,7 @@ final public class TaskQueue<Element> {
     let id: UUID
     let originalTask: () async throws -> Element
     let postCheck: () -> Void
-    
+
     func task() async throws -> Element {
       let result = try await originalTask()
       postCheck()
@@ -91,16 +98,19 @@ final public class TaskQueue<Element> {
       postCheck: { [weak self] in
         guard let self else { return }
         isRunning = false
+        markMetricsAsEnd(id: id)
         checkNext()
       })
     _array.write { array in
       array.append(item)
+      metrics(id: id)
     }
     return item
   }
 
   /// The `await` for the block returned here will immediately pass when `self` is deallocated.
   private func waitUntilAvailable(item: TaskItem) -> () async -> Void {
+    let id = item.id
     // weak capture `self`, otherwise if any signal is waiting, the `TaskQueue` can't be deallocated.
     return { [weak self] in
       guard let (signal, token) = self?.stream.subscribe(where: { $0.id == item.id }) else {
@@ -109,6 +119,7 @@ final public class TaskQueue<Element> {
       self?.checkNext()
       // Must await here first, then the `stream` can cast the item later.
       for await _ in signal { break }
+      self?.markMetricsAsStart(id: id)
       token.unsubscribe()
     }
   }
@@ -133,5 +144,88 @@ final public class TaskQueue<Element> {
   }
 }
 
+// MARK: - Metrics
+
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Result<Value, E>>
+extension TaskQueue {
+
+  /// The task's metrics of whole enqueueing and execution.
+  public struct Metrics {
+    /// The task's id when passed as the parameter into the enqueueing function.
+    public let id: UUID
+    /// The enqueue time of the task.
+    public let enqueueTime: CFAbsoluteTime
+    /// The start execution time of the task.
+    public var startExecutionTime: CFAbsoluteTime?
+    /// The end execution time of the task.
+    public var endExecutionTime: CFAbsoluteTime?
+
+    /// The waiting time of the task in the queue.
+    public var waitingDuration: TimeInterval? {
+      guard let startExecutionTime else { return nil }
+      return startExecutionTime - enqueueTime
+    }
+    /// The execution time of the task.
+    public var executionDuration: TimeInterval? {
+      guard let startExecutionTime, let endExecutionTime else { return nil }
+      return endExecutionTime - startExecutionTime
+    }
+  }
+
+  /// Retreive the task's metrics using task id, will delete the metrics from the queue cache after retreived.
+  /// - Parameter id: The task's id.
+  /// - Returns: The metrics of the task if there is any in the cache, otherwise `nil`.
+  public func retreiveTaskMetrics(id: UUID) -> Metrics? {
+    defer {
+      _array.write { _ in
+        remove(metricsID: id)
+      }
+    }
+    return metrics[id]
+  }
+
+  func add(metrics: Metrics) {
+    self.metrics[metrics.id] = metrics
+    metricsCacheIndex.append(metrics.id)
+
+    if metricsCacheIndex.count > metricsCacheSize {
+      let oldest = metricsCacheIndex.removeFirst()
+      self.metrics.removeValue(forKey: oldest)
+    }
+  }
+
+  func remove(metricsID: UUID) {
+    self.metrics.removeValue(forKey: metricsID)
+    metricsCacheIndex.removeAll { $0 == metricsID }
+  }
+
+  @discardableResult
+  func metrics(id: UUID) -> Metrics {
+    let metr: Metrics = .init(id: id, enqueueTime: CFAbsoluteTimeGetCurrent())
+    add(metrics: metr)
+    return metr
+  }
+
+  func markMetricsAsStart(id: UUID) {
+    guard var metr = metrics[id] else { return }
+    metr.startExecutionTime = CFAbsoluteTimeGetCurrent()
+    metrics[id] = metr
+  }
+
+  func markMetricsAsEnd(id: UUID) {
+    guard var metr = metrics[id] else { return }
+    metr.endExecutionTime = CFAbsoluteTimeGetCurrent()
+    metrics[id] = metr
+  }
+
+}
+
+@available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
+extension TaskQueue.Metrics: CustomStringConvertible {
+  public var description: String {
+    var desc = "id: \(id)"
+    desc += "\n - waitingDuration: \(waitingDuration ?? -1)"
+    desc += "\n - executionDuration: \(executionDuration ?? -1)"
+    return desc
+  }
+}

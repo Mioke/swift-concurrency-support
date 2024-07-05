@@ -16,7 +16,8 @@ extension Array {
   /// - Returns: An array containing the transformed elements of this sequence.
   public func asyncMap<T>(_ conversion: (Element) async throws -> T) async rethrows -> [T] {
     var results: [T] = []
-    for item in self {
+    let copied = self
+    for item in copied {
       results.append(try await conversion(item))
     }
     return results
@@ -37,4 +38,29 @@ extension Array {
     }
     return results
   }
+
+  ///  Performs the given action on each element of the sequence in a concurrency context.
+  /// - Parameter action: The closure to invoke on each element.
+  public func asyncForEach(_ action: (Element) async throws -> Void) async rethrows {
+    let copied = self
+    for item in copied {
+      try await action(item)
+    }
+  }
+
+  /// Returns an array containing the non-nil results of calling the given transformation with each element
+  /// of this sequence.
+  /// - Parameter conversion: The transform conversion closure.
+  /// - Returns: An array containing the transformed non-nil elements of this sequence.
+  public func asyncCompactMap<T>(_ conversion: (Element) async throws -> T?) async rethrows -> [T] {
+    var results: [T] = []
+    let copied = self
+    for item in copied {
+      if let result = try await conversion(item) {
+        results.append(result)
+      }
+    }
+    return results
+  }
+
 }

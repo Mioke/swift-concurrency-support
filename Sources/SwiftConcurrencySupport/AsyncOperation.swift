@@ -48,6 +48,20 @@ public struct AsyncOperation<Success> {
     defer { state = .finished }
     return try await self.operation()
   }
+
+  /// Create an `AsyncOperation` from a value. 
+  /// - Parameter value: The value.
+  /// - Returns: The operation.
+  public static func value(_ value: Success) -> AsyncOperation<Success> {
+    return .init { value }
+  }
+
+  /// Create an `AsyncOperation` from an error.
+  /// - Parameter error: The error.
+  /// - Returns: The operation.
+  public static func error(_ error: Swift.Error) -> AsyncOperation<Success> {
+    return .init { throw error }
+  }
 }
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)

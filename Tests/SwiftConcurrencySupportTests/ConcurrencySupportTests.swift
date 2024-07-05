@@ -54,26 +54,25 @@ class ConcurrencySupportTestCases: XCTestCase {
     await fulfillment(of: [expect], timeout: 10)
   }
 
-  var stream: AsyncThrowingSignalStream<Int> = .init()
-
   @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream1() async throws {
+    let stream: AsyncThrowingSignalStream<Int> = .init()
 
     let expect = XCTestExpectation()
 
     Task.detached {
       try await Task.sleep(for: Duration.seconds(2))
-      self.stream.send(signal: 1)
+      stream.send(signal: 1)
 
       try await Task.sleep(for: Duration.seconds(2))
-      self.stream.send(signal: 2)
+      stream.send(signal: 2)
     }
 
     Task {
-      let one = try await self.stream.wait { $0 == 1 }
+      let one = try await stream.wait { $0 == 1 }
       print("get one")
       XCTAssert(one == 1)
-      let two = try await self.stream.wait { $0 == 2 }
+      let two = try await stream.wait { $0 == 2 }
       print("get two")
       XCTAssert(two == 2)
 
@@ -90,20 +89,22 @@ class ConcurrencySupportTestCases: XCTestCase {
   // test send error
   @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream2() async throws {
+    let stream: AsyncThrowingSignalStream<Int> = .init()
+
     Task.detached {
       try await Task.sleep(for: Duration.seconds(2))
-      self.stream.send(signal: 1)
+      stream.send(signal: 1)
 
       try await Task.sleep(for: Duration.seconds(2))
-      self.stream.send(error: InternalError.testError)
+      stream.send(error: InternalError.testError)
     }
 
     let task = Task {
-      let one = try await self.stream.wait { $0 == 1 }
+      let one = try await stream.wait { $0 == 1 }
       print("get one")
       XCTAssert(one == 1)
 
-      _ = try await self.stream.wait { $0 == 2 }
+      _ = try await stream.wait { $0 == 2 }
       print("won't run the following code")
       XCTAssert(false)
     }
@@ -120,18 +121,19 @@ class ConcurrencySupportTestCases: XCTestCase {
     }
   }
 
+  var stream: AsyncThrowingSignalStream<Int> = .init()
+
   // Test deinit.
   @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream3() async throws {
-
     let task = Task {
-      _ = try await self.stream.wait { $0 == 1 }
+      _ = try await stream.wait { $0 == 1 }
       XCTAssert(false)
     }
 
     try await Task.sleep(for: Duration.seconds(2))
-    self.stream.invalid()
-    self.stream = .init()
+    stream.invalid()
+    stream = .init()
 
     switch await task.result {
     case .failure(let error):
@@ -707,6 +709,32 @@ class TaskQueueTestCases: XCTestCase {
     }
 
     await fulfillment(of: [expect], timeout: 10)
+  }
+
+  func testMetricsData() async throws {
+    let queue = TaskQueue<Int>()
+
+    let id1 = UUID()
+    let task1 = queue.enqueueTask(id: id1) {
+      try await Task.sleep(for: .seconds(1))
+      print("\(id1) done")
+      return 1
+    }
+
+    let id2 = UUID()
+    let task2 = queue.enqueueTask(id: id2) {
+      try await Task.sleep(for: .seconds(1))
+      print("\(id2) done")
+      return 2
+    }
+
+    print(try await task1.value, try await task2.value)
+
+    let met1 = queue.retreiveTaskMetrics(id: id1)
+    let met2 = queue.retreiveTaskMetrics(id: id2)
+
+    print(met1!.description)
+    print(met2!.description)
   }
 }
 
