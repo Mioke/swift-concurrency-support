@@ -14,12 +14,18 @@ public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Resu
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 final public class TaskQueue<Element> {
 
+  /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
+  public var metricsConfiguration: TaskQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
+    didSet {
+      resetMetrics()
+    }
+  }
+
   @ThreadSafe
   private var array: [TaskItem] = []
-  
+
   private var metrics: [UUID: TaskQueue.Metrics] = [:]
   private var metricsCacheIndex: [UUID] = []
-  public var metricsCacheSize: Int = 10
 
   private var stream: AsyncMulticast<TaskItem> = .init()
 
@@ -172,6 +178,12 @@ extension TaskQueue {
     }
   }
 
+  /// The metrics configuration
+  public enum MetricsConfiguration: Equatable {
+    case disabled
+    case enabled(cacheSize: Int)
+  }
+
   /// Retreive the task's metrics using task id, will delete the metrics from the queue cache after retreived.
   /// - Parameter id: The task's id.
   /// - Returns: The metrics of the task if there is any in the cache, otherwise `nil`.
@@ -185,6 +197,7 @@ extension TaskQueue {
   }
 
   func add(metrics: Metrics) {
+    guard case .enabled(let metricsCacheSize) = metricsConfiguration else { return }
     self.metrics[metrics.id] = metrics
     metricsCacheIndex.append(metrics.id)
 
@@ -199,25 +212,30 @@ extension TaskQueue {
     metricsCacheIndex.removeAll { $0 == metricsID }
   }
 
-  @discardableResult
-  func metrics(id: UUID) -> Metrics {
+  func metrics(id: UUID) {
+    guard metricsConfiguration != .disabled else { return }
     let metr: Metrics = .init(id: id, enqueueTime: CFAbsoluteTimeGetCurrent())
     add(metrics: metr)
-    return metr
   }
 
   func markMetricsAsStart(id: UUID) {
+    guard metricsConfiguration != .disabled else { return }
     guard var metr = metrics[id] else { return }
     metr.startExecutionTime = CFAbsoluteTimeGetCurrent()
     metrics[id] = metr
   }
 
   func markMetricsAsEnd(id: UUID) {
+    guard metricsConfiguration != .disabled else { return }
     guard var metr = metrics[id] else { return }
     metr.endExecutionTime = CFAbsoluteTimeGetCurrent()
     metrics[id] = metr
   }
 
+  func resetMetrics() {
+    metrics.removeAll()
+    metricsCacheIndex.removeAll()
+  }
 }
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
