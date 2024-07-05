@@ -45,7 +45,7 @@ do {
 }
 ```
 
-* `AsyncMuticast` : Multicaster for concurrency context, create an `AsyncStream` and a cancel token for the observer.
+* `AsyncMuticast` : Multicaster for a concurrency context, create an `AsyncStream` and a cancel token for the observer when subscribing from this multicaster.
 
 ```swift
 let (stream, token) = multicaster.subscribe()
@@ -71,9 +71,26 @@ Task {
 
 * `AsyncThrowingSignalStream`: Please see the code detail.
 
-(TBA)
+```swift
+let stream: AsyncThrowingSignalStream<Int> = .init()
 
-* `AsyncOperation` : Wrapped async operation. Provides `flatMap`, `asyncMap`, `concurrentMap`, `combine` functions to manipulate the operations' result.
+Task.detached {
+  try await Task.sleep(for: Duration.seconds(2))
+  stream.send(signal: 1)
+
+  try await Task.sleep(for: Duration.seconds(2))
+  stream.send(signal: 2)
+}
+
+Task {
+  let one = try await stream.wait { $0 == 1 }
+  XCTAssert(one == 1)
+  let two = try await stream.wait { $0 == 2 }
+  XCTAssert(two == 2)
+}
+```
+
+* `AsyncOperation` : Wrapped async operation. Provides `flatMap`, `map`, `combine` functions to manipulate the operations' result.
 
 ```swift
 let operation1: AsyncOperation<Int> = .init {
@@ -111,7 +128,7 @@ Task {
 }
 ```
 
-* `TaskQueue`: Run `Task` one by one.
+* `TaskQueue`: Run `Task` one by one, have task metrics when task is finished.
 
 ```swift
 for index in assuming {
@@ -125,6 +142,13 @@ for index in assuming {
 
 let results = try await tasks.asyncMap { try await $0.value }
 XCTAssert(results == assuming)
+
+/*
+Metrics's log:
+id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
+  waitingDuration: 1.00012505054473876953
+  executionDuration: 1.042160987854004
+*/
 ```
 
 * Other supporting features.
