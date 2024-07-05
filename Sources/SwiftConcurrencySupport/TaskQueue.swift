@@ -219,16 +219,17 @@ extension TaskQueue {
   }
 
   func markMetricsAsStart(id: UUID) {
-    guard metricsConfiguration != .disabled else { return }
-    guard var metr = metrics[id] else { return }
-    metr.startExecutionTime = CFAbsoluteTimeGetCurrent()
-    metrics[id] = metr
+    modifyMetrics(id: id) { $0.startExecutionTime = CFAbsoluteTimeGetCurrent() }
   }
 
   func markMetricsAsEnd(id: UUID) {
+    modifyMetrics(id: id) { $0.endExecutionTime = CFAbsoluteTimeGetCurrent() }
+  }
+  
+  func modifyMetrics(id: UUID, modification: (inout Metrics) -> Void) {
     guard metricsConfiguration != .disabled else { return }
     guard var metr = metrics[id] else { return }
-    metr.endExecutionTime = CFAbsoluteTimeGetCurrent()
+    modification(&metr)
     metrics[id] = metr
   }
 
