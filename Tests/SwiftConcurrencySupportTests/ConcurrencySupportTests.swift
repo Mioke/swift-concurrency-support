@@ -921,6 +921,24 @@ class AsyncOperationTestCases: XCTestCase {
     let result = try await operation1.start()
     XCTAssert(result == 1)
   }
+
+  func testTimeout() async throws {
+    let operation: AsyncOperation<Int> = .init {
+      print("Enter 1")
+      try await Task.sleep(for: .seconds(2))
+      print("Ending 1")
+      return 1
+    }
+    .timeout(after: 1)
+
+    let result = await operation.startWithResult()
+    if let error = result.error() as? Task<Int, Swift.Error>.CustomError {
+      print("Got timeout error \(error)")
+      XCTAssert(error == .timeout)
+    } else {
+      XCTAssert(false)
+    }
+  }
 }
 
 @available(iOS 16, *)

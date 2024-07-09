@@ -166,6 +166,19 @@ extension AsyncOperation {
       }
     }
   }
+
+  /// Set a timeout for the operation. If the operation does not finish in the given time, it will be cancelled and 
+  /// throw a ``Task.CustomError.timeout`` error.
+  /// - Parameter after: The timeout duration, unit is second.
+  /// - Returns: The operation with a timeout limit.
+  public func timeout(after: TimeInterval) -> AsyncOperation<Success> {
+    return .init {
+      try await Task {
+        return try await self.start()
+      }
+      .value(timeout: UInt64(after * Double(NSEC_PER_SEC)))
+    }
+  }
 }
 
 // MARK: - AsyncOperationQueue
