@@ -15,6 +15,11 @@ import os
   @testable import SwiftConcurrencySupport
 #endif
 
+enum InternalError: Error, Equatable {
+  case test
+  case one
+}
+
 class ConcurrencySupportTestCases: XCTestCase {
 
   var property: AsyncProperty<Int> = .init(initialValue: -1)
@@ -735,13 +740,13 @@ class AsyncOperationTestCases: XCTestCase {
 
     await Task.yield()
 
-    let failedTask = Task {
+    let multientryTask = Task {
       return try await operation.start()
     }
 
-    if case .failure(let error) = await failedTask.result {
-      print(error)
-      XCTAssert(error is AsyncOperation<Int>.Error)
+    if case .success(let value) = await multientryTask.result {
+      print(value)
+      XCTAssert(value == 1)
     }
   }
 
@@ -833,6 +838,88 @@ class AsyncOperationTestCases: XCTestCase {
     let result = try await combined.start()
 
     XCTAssert(result == [1, 2])
+  }
+
+  func testMapError() async throws {
+    let operation1: AsyncOperation<Int> = .error(InternalError.test)
+    let operation2 = operation1.mapError { error in
+      XCTAssert((error as! InternalError) == .test)
+      return .value(1)
+    }
+
+    let result = try await operation2.start()
+    XCTAssert(result == 1)
+  }
+
+  func testRetry() async throws {
+    var counter = 0
+    let operation1: AsyncOperation<Int> = .error(InternalError.test)
+      .map { $0 + 1 }
+      .on(error: { error in
+        print("Get error \(error) in operation 1, date \(Date())")
+        XCTAssert(error is InternalError)
+        counter += 1
+      })
+      .retry(times: 3, interval: 1)
+    let result = await operation1.startWithResult()
+    XCTAssert(result.error() != nil)
+    XCTAssert(counter == 4)
+  }
+
+  func testMultipleTransformation() async throws {
+    let operation1: AsyncOperation<Int> = .init {
+      print("Enter 1")
+      try await Task.sleep(for: .seconds(2))
+      print("Ending 1")
+      return 1
+    }
+    .on(
+      value: { value in
+        print("Get value \(value) in operation 1")
+      },
+      error: { error in
+        print("Get error \(error) in operation 1")
+      })
+
+    let operation2 =
+      operation1
+      .flatMap { _ in
+        return .init {
+          print("Enter 2")
+          try await Task.sleep(for: .seconds(1))
+          print("Ending 2")
+          return 2
+        }
+      }
+      .on(
+        value: { value in
+          print("Value \(value) in operation 2")
+        },
+        error: { error in
+          print("Error \(error) in operation 2")
+        })
+
+    let result = try await operation2.start()
+    XCTAssert(result == 2)
+
+    let result1 = await operation1.startWithResult()
+    XCTAssert(result1.error() == nil)
+  }
+
+  func testMetrics() async throws {
+    let operation1: AsyncOperation<Int> = .init {
+      print("Enter 1")
+      try await Task.sleep(for: .seconds(2))
+      print("Ending 1")
+      return 1
+    }
+    .metrics { metrics in
+      print("Metrics \(metrics)")
+      XCTAssert(metrics.duration! > 1)
+    }
+
+    let result = try await operation1.start()
+    XCTAssert(result == 1)
   }
 }
 
