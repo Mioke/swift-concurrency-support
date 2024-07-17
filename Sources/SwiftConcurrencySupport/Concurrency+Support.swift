@@ -10,14 +10,14 @@ import Foundation
 /// 1. Can await in multiple tasks, and `wait(for:)` can only receive signal once.
 /// 2. Send `error` to all waiting callers.
 /// 3. Won't terminate when receiving an `error`
-/// 4. Send `haventWaitedForValue` error when stream is off.
+/// 4. Send ``SignalError.closed`` error when stream is off.
 /// 5. If there's a wait in the stream, the stream won't get deallocated, please call `invalid()` first
 ///    before relase a stream.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public class AsyncThrowingSignalStream<T> {
+public actor AsyncThrowingSignalStream<T> {
 
   public enum SignalError: Swift.Error {
-    case haventWaitedForValue
+    case closed
   }
 
   private var continuations: [(condition: (T) -> Bool, continuation: CheckedContinuation<T, any Error>)] = []
@@ -28,8 +28,7 @@ public class AsyncThrowingSignalStream<T> {
   /// - Parameter signalCondition: A condition to determine whether the value is what caller waiting for.
   /// - Returns: The value.
   public func wait(for signalCondition: @escaping (T) -> Bool) async throws -> T {
-    return try await withCheckedThrowingContinuation { [weak self] continuation in
-      guard let self else { return }
+    return try await withCheckedThrowingContinuation { continuation in
       continuations.append((condition: signalCondition, continuation: continuation))
     }
   }
@@ -37,22 +36,20 @@ public class AsyncThrowingSignalStream<T> {
   /// Send a value into this stream.
   /// - Parameter signal: A value.
   public func send(signal: T) {
-    continuations.removeAll(where: {
-      (condition: (T) -> Bool, continuation: CheckedContinuation<T, Error>) in
-      if condition(signal) {
-        continuation.resume(returning: signal)
+    continuations.removeAll {
+      if $0.condition(signal) {
+        $0.continuation.resume(returning: signal)
         return true
       }
       return false
-    })
+    }
   }
 
   /// Send an error to all waiting caller.
   /// - Parameter error: An error.
   public func send(error: Error) {
     continuations.removeAll {
-      (condition: (T) -> Bool, continuation: CheckedContinuation<T, Error>) in
-      continuation.resume(throwing: error)
+      $0.continuation.resume(throwing: error)
       return true
     }
   }
@@ -62,14 +59,13 @@ public class AsyncThrowingSignalStream<T> {
   ///              want to release a stream or add `invalid()` in the owner's `deinit`.
   public func invalid() {
     continuations.removeAll {
-      (condition: (T) -> Bool, continuation: CheckedContinuation<T, Error>) in
-      continuation.resume(throwing: SignalError.haventWaitedForValue)
+      $0.continuation.resume(throwing: SignalError.closed)
       return true
     }
   }
 
   deinit {
-    invalid()
+    continuations.forEach { $0.continuation.resume(throwing: SignalError.closed) }
   }
 }
 
@@ -101,14 +97,12 @@ extension Task where Failure == any Error {
     case timeout
   }
 
-  /// Get task's success value with a timeout limition.
+  /// Get task's success value with a timeout limitation.
   /// - Important: If the task is a computationally-intensive process, guarantee to add `Task.checkCancellaction()`
-  /// and `Task.yield()` to check the task whether has been cancelled already. ~~Or the timeout block won't get called
-  /// immediately but until the time of the task has a chance to check cancelled, for example calling other legecy
-  /// API like `Task.sleep`, `URLSessoin.data` etc.~~
+  /// and `Task.yield()` to check the task whether has been cancelled already.
   /// - Important: When timeout there will be raised a "CustomError.timeout".
   /// - Parameters:
-  ///   - nanoseconds: Timeout limition
+  ///   - nanoseconds: Timeout limitation
   ///   - onTimeout: Timeout handler.
   /// - Returns: Success value.
   public func value(timeout nanoseconds: UInt64, onTimeout: (@Sendable () -> Void)? = nil)
@@ -140,12 +134,12 @@ extension Task where Failure == any Error {
     }
   }
 
-  /// Get task's success value with a timeout duration limition.
+  /// Get task's success value with a timeout duration limitation.
   /// - Important: If the task is a computationally-intensive process, guarantee to add `Task.checkCancellaction()`
   /// and `Task.yield()` to check the task whether has been cancelled already, or the task may run infinitely.
   /// - Important: When timeout there will be raised a "CustomError.timeout".
   /// - Parameters:
-  ///   - duration: Timeout limition in Duration.
+  ///   - duration: Timeout limitation in Duration.
   ///   - onTimeout: Timeout handler
   /// - Returns: Success value.
   @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
@@ -175,6 +169,20 @@ extension Task where Failure == any Error {
         }
         cooperateTask.cancel()
       }
+    }
+  }
+
+  /// Get task's success value with a timeout interval limitation, it will throw a `CustomError.timeout` if the task
+  /// is not completed in the specified interval.
+  /// - Parameters:
+  ///   - interval: Timeout limitation in TimeInterval.
+  ///   - onTimeout: Timeout handler
+  /// - Returns:
+  public func value(timeout interval: TimeInterval, onTimeout: (@Sendable () -> Void)? = nil) async throws -> Success {
+    if #available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *) {
+      return try await value(timeout: .seconds(interval), onTimeout: onTimeout)
+    } else {
+      return try await value(timeout: UInt64(interval * Double(NSEC_PER_SEC)), onTimeout: onTimeout)
     }
   }
 }
