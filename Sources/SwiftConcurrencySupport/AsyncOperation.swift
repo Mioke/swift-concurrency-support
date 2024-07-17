@@ -94,6 +94,8 @@ extension AsyncOperation {
   }
 
   /// Combine multiple operations together and get their results in once. All the operations will run asynchrounously.
+  /// - Important: If one operation fails, the whole operation will fail immediately and cancel all other tasks. But 
+  /// other running operations will continue to run until finished if you don't have any Task.isCancelled check.
   /// - Parameter operations: The operations going to combined.
   /// - Returns: The combined operation.
   public static func combine(_ operations: [AsyncOperation<Success>]) -> AsyncOperation<[Success]> {
@@ -104,12 +106,22 @@ extension AsyncOperation {
     }
   }
 
+  /// Concatenate multiple operations together and get their results in once, the operations will run one by one.
+  /// - Parameter operations: The operations going to concatenated.
+  /// - Returns: The concatenated operation.
+  public static func concat(_ operations: [AsyncOperation<Success>]) -> AsyncOperation<[Success]> {
+    return .init {
+      return try await operations.asyncMap { try await $0.start() }
+    }
+  }
+
   /// Provide a injectable way to handle the result of an operation.
   /// - Parameters:
   ///   - value: The operation when get a success result.
   ///   - error: The operation when get a failure result.
   /// - Returns: A new operation.
   public func on(
+    starting: (() async -> Void)? = nil,
     value: ((Success) async -> Void)? = nil,
     error: ((Swift.Error) async -> Void)? = nil,
     final: (() -> Void)? = nil
@@ -117,6 +129,7 @@ extension AsyncOperation {
     return .init {
       defer { final?() }
       do {
+        await starting?()
         let result = try await self.start()
         await value?(result)
         return result
@@ -167,7 +180,7 @@ extension AsyncOperation {
     }
   }
 
-  /// Set a timeout for the operation. If the operation does not finish in the given time, it will be cancelled and 
+  /// Set a timeout for the operation. If the operation does not finish in the given time, it will be cancelled and
   /// throw a ``Task.CustomError.timeout`` error.
   /// - Parameter after: The timeout duration, unit is second.
   /// - Returns: The operation with a timeout limit.
@@ -343,5 +356,48 @@ extension AsyncOperation {
       defer { closure(metrics) }
       return try await metrics.metrics(around: self.start)
     }
+  }
+}
+
+// TODO: - involve failure's type into the AsyncOperation like AsyncOperation<Success, Failure>.
+
+/// Now we don't do this because it's ugly when initializing a producer.
+/// ```swift
+/// let producer = AsyncProducer<Success, Failure>(operation: {
+///   do {
+///     let result = try await operation()
+///     return.success(result)
+///   } catch {
+///     return.failure(error)
+///   }
+/// ```
+/// Or it only must unsafe cast the throwing error to the `Failure` type, which is not good.
+/// After Swift 6 released we can use `throw(ErrorType)` to limit the throwing error type.
+/// 
+/// Why `AsyncOperation<Success, Failure>` is good? Because when the operation has no error to throw, the type 
+/// `AsyncOperation<Success, Never>` can be better understand, and the `start() async` function would have a 
+/// non-throwing version.
+private struct AsyncProducer<Success, Failure> where Failure: Swift.Error {
+  typealias Operation = () async -> Result<Success, Failure>
+
+  let operation: Operation
+
+  public init(operation: @escaping Operation) {
+    self.operation = operation
+  }
+
+  public func start() async throws -> Success {
+    try await operation().get()
+  }
+
+  public func startWithResult() async -> Result<Success, Failure> {
+    await operation()
+  }
+}
+
+extension AsyncProducer where Failure == Never {
+  func start() async -> Success {
+    let result = await operation()
+    return try! result.get()
   }
 }

@@ -31,12 +31,21 @@ extension Array {
   public func concurrentMap<T>(_ conversion: @escaping (Element) async throws -> T) async throws -> [T] {
     var results: [T] = []
     let tasks = map { item in
-      Task { try await conversion(item) }
+      Task {
+        let result = try await conversion(item)
+        try Task.checkCancellation()
+        return result
+      }
     }
-    for task in tasks {
-      results.append(try await task.value)
+    do {
+      for task in tasks {
+        results.append(try await task.value)
+      }
+      return results
+    } catch {
+      tasks.forEach { $0.cancel() }
+      throw error
     }
-    return results
   }
 
   ///  Performs the given action on each element of the sequence in a concurrency context.

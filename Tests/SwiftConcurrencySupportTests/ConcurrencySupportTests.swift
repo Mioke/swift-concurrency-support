@@ -50,10 +50,11 @@ class ConcurrencySupportTestCases: XCTestCase {
     Task.detached(weakCapturing: self) { me in
       print("detached task 2, prepare to visit")
       print("task 2 visited current value: \(me.property.value)")
-      let (stream, _) = me.property.subscribe()
+      let (stream, token) = me.property.subscribe()
       for await value in stream {
         print("task 2 notified with:", value)
       }
+      token.unsubscribe()
     }
 
     await fulfillment(of: [expect], timeout: 10)
@@ -67,10 +68,10 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task.detached {
       try await Task.sleep(for: Duration.seconds(2))
-      stream.send(signal: 1)
+      await stream.send(signal: 1)
 
       try await Task.sleep(for: Duration.seconds(2))
-      stream.send(signal: 2)
+      await stream.send(signal: 2)
     }
 
     Task {
@@ -98,10 +99,10 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task.detached {
       try await Task.sleep(for: Duration.seconds(2))
-      stream.send(signal: 1)
+      await stream.send(signal: 1)
 
       try await Task.sleep(for: Duration.seconds(2))
-      stream.send(error: InternalError.testError)
+      await stream.send(error: InternalError.testError)
     }
 
     let task = Task {
@@ -131,25 +132,30 @@ class ConcurrencySupportTestCases: XCTestCase {
   // Test deinit.
   @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream3() async throws {
+    let expect = XCTestExpectation()
     let task = Task {
       _ = try await stream.wait { $0 == 1 }
       XCTAssert(false)
     }
 
-    try await Task.sleep(for: Duration.seconds(2))
-    stream.invalid()
-    stream = .init()
+    Task {
+      try await Task.sleep(for: Duration.seconds(2))
+      await stream.invalid()
+      stream = .init()
 
-    switch await task.result {
-    case .failure(let error):
-      guard let error = error as? AsyncThrowingSignalStream<Int>.SignalError else {
-        XCTAssert(false)
-        return
+      switch await task.result {
+      case .failure(let error):
+        guard let error = error as? AsyncThrowingSignalStream<Int>.SignalError else {
+          XCTAssert(false)
+          return
+        }
+        XCTAssert(error == .closed)
+      default:
+        break
       }
-      XCTAssert(error == .haventWaitedForValue)
-    default:
-      break
+      expect.fulfill()
     }
+    await fulfillment(of: [expect], timeout: 3)
   }
 
   var multicaster: AsyncThrowingMulticast<Int> = .init()
