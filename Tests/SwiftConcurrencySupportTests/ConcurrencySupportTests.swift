@@ -945,6 +945,50 @@ class AsyncOperationTestCases: XCTestCase {
       XCTAssert(false)
     }
   }
+
+  func testMergeOperator() async throws {
+    let operation1: AsyncOperation<Int> = .init {
+      print("Enter 1")
+      try await Task.sleep(for: .seconds(2))
+      print("Ending 1")
+      return 1
+    }
+
+    let operation2: AsyncOperation<Int> = .init {
+      print("Enter 2")
+      try await Task.sleep(for: .seconds(1))
+      print("Ending 2")
+      return 2
+    }
+
+    let mergedStream = AsyncOperation.merge([operation1, operation2])
+    var iterator = mergedStream.makeAsyncIterator()
+    var results: [Int] = []
+    while let value = try await iterator.next() {
+      print("Got value \(value)")
+      results.append(value)
+    }
+
+    XCTAssert(results == [1, 2])
+  }
+
+  func testMergeDeallocation() async throws {
+    let expectation = expectation(description: "Merge dealloc")
+
+    Task {
+      let operation1: AsyncOperation<Int> = .init { fatalError() }
+      let operation2: AsyncOperation<Int> = .init { fatalError() }
+      let mergedStream = AsyncOperation.merge([operation1, operation2])
+      _ = mergedStream.makeAsyncIterator()
+    }
+
+    Task {
+      try await Task.sleep(for: .seconds(1))
+      expectation.fulfill()
+    }
+
+    await fulfillment(of: [expectation], timeout: 2)
+  }
 }
 
 @available(iOS 16, *)

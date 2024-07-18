@@ -5,6 +5,7 @@ import PackageDescription
 
 let package = Package(
   name: "SwiftConcurrencySupport",
+  platforms: [.iOS(.v13), .macOS(.v10_15), .watchOS(.v6), .tvOS(.v13)],
   products: [
     // Products define the executables and libraries a package produces, making them visible to other packages.
     .library(
@@ -25,5 +26,6 @@ let package = Package(
         "SwiftConcurrencySupport",
         .product(name: "RxCocoa", package: "RxSwift"),
       ]),
-  ]
+  ],
+  swiftLanguageVersions: [.v5]
 )

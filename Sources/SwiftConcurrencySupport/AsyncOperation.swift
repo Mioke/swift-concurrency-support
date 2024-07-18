@@ -192,6 +192,16 @@ extension AsyncOperation {
       .value(timeout: UInt64(after * Double(NSEC_PER_SEC)))
     }
   }
+
+  /// Merge multiple operations into one AsyncThrowingStream. The operations will run one by one.
+  /// - Parameter operations: The operations going to be merged.
+  /// - Returns: The merged stream.
+  public static func merge(_ operations: [AsyncOperation<Success>]) -> AsyncThrowingStream<Success, Swift.Error> {
+    var iterator = operations.makeIterator()
+    return .init {
+      return try await iterator.next()?.start()
+    }
+  }
 }
 
 // MARK: - AsyncOperationQueue
