@@ -120,7 +120,9 @@ extension Task where Failure == any Error {
             self.cancel()
           }
         } catch {
-          continuation.resume(throwing: error)
+          if !Task<Never, Never>.isCancelled {
+            continuation.resume(throwing: error)
+          }
         }
       }
       Task<Void, Never> {
@@ -158,7 +160,9 @@ extension Task where Failure == any Error {
             self.cancel()
           }
         } catch {
-          continuation.resume(throwing: error)
+          if !Task<Never, Never>.isCancelled {
+            continuation.resume(throwing: error)
+          }
         }
       }
       Task<Void, Never> {

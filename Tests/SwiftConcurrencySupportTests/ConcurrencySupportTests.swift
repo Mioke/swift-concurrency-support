@@ -466,6 +466,15 @@ class ConcurrencySupportTestCases: XCTestCase {
     }
   }
 
+  func testNoTimeout() async throws {
+    let task = Task {
+      try await Task.sleep(for: .seconds(1))
+      return 1
+    }
+    let result = try await task.value(timeout: .seconds(2))
+    XCTAssert(result == 1)
+  }
+
 }
 
 @available(iOS 16, *)
@@ -897,16 +906,21 @@ class AsyncOperationTestCases: XCTestCase {
           return 2
         }
       }
-      .on(
-        value: { value in
-          print("Value \(value) in operation 2")
-        },
-        error: { error in
-          print("Error \(error) in operation 2")
-        })
+      .combine(operation1)
+      .map(+)
+      .mapError { error in
+        print("Get error \(error) in operation 2")
+        return .value(0)
+      }
+      .metrics { metrics in
+        print("Metrics \(metrics)")
+      }
+      .retry(times: 1, interval: 5)
+      .timeout(after: 10)
+      
 
     let result = try await operation2.start()
-    XCTAssert(result == 2)
+    XCTAssert(result == 3)
 
     let result1 = await operation1.startWithResult()
     XCTAssert(result1.error() == nil)
