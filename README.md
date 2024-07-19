@@ -126,18 +126,66 @@ id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
 
 ```swift
 let operation1: AsyncOperation<Int> = .init {
-  try await Task.sleep(for: .seconds(1))
+  try await Task.sleep(for: .seconds(2))
   return 1
 }
+.on(
+  value: { value in
+    print("Get value \(value) in operation 1")
+  },
+  error: { error in
+    print("Get error \(error) in operation 1")
+  })
 
-let operation2 = operation1.flatMap { result in
-  return .init {
-    try await Task.sleep(for: .seconds(1))
-    return result + 1
+let operation2 =
+  operation1
+  .flatMap { _ in
+    return .init {
+      try await Task.sleep(for: .seconds(1))
+      return 2
+    }
   }
+  .combine(operation1)
+  .map(+)
+  .mapError { error in
+    print("Get error \(error) in operation 2")
+    return .value(0)
+  }
+  .metrics { metrics in
+    print("Metrics \(metrics)")
+  }
+  .retry(times: 1, interval: 5)
+  .timeout(after: 10)
+  
+
+let result = try await operation2.start()
+XCTAssert(result == 3)
+
+let result1 = await operation1.startWithResult()
+XCTAssert(result1.error() == nil)
+```
+
+* `AsyncOperation.combine` : Combine multiple `AsyncOperation` into one.
+
+```swift
+let combined = AsyncOperation.combine([operation1, operation2])
+let result = try await combined.start()
+
+XCTAssert(result == [1, 3])
+```
+
+* `AsyncOperation.merge` : Merge multiple `AsyncOperation` into one `AsyncStream`.
+
+```swift
+let mergedStream = AsyncOperation.merge([operation1, operation2])
+var iterator = mergedStream.makeAsyncIterator()
+var results: [Int] = []
+while let value = try await iterator.next() {
+  print("Got value \(value)")
+  results.append(value)
 }
 
-print(try await operation.start())
+XCTAssert(results == [1, 2])
 ```
 
 * `AsyncOperationQueue` : Run `AsyncOperation` in serial or concurrent ways, Please see the code detail.
