@@ -394,9 +394,8 @@ class ConcurrencySupportTestCases: XCTestCase {
       }
     } catch {
       print("###", error)
-
-      if case Task<String, any Error>.CustomError.timeout = error {
-        XCTAssert(true)
+      if let error = error as? TaskError {
+        XCTAssert(TaskError.timeout == error)
       } else {
         XCTAssert(false)
       }
@@ -457,9 +456,8 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     } catch {
       print("###", error)
-
-      if case Task<String, any Error>.CustomError.timeout = error {
-        XCTAssert(true)
+      if let error = error as? TaskError {
+        XCTAssert(TaskError.timeout == error)
       } else {
         XCTAssert(false)
       }
@@ -917,7 +915,6 @@ class AsyncOperationTestCases: XCTestCase {
       }
       .retry(times: 1, interval: 5)
       .timeout(after: 10)
-      
 
     let result = try await operation2.start()
     XCTAssert(result == 3)
@@ -952,7 +949,7 @@ class AsyncOperationTestCases: XCTestCase {
     .timeout(after: 1)
 
     let result = await operation.startWithResult()
-    if let error = result.error() as? Task<Int, Swift.Error>.CustomError {
+    if let error = result.error() as? TaskError {
       print("Got timeout error \(error)")
       XCTAssert(error == .timeout)
     } else {

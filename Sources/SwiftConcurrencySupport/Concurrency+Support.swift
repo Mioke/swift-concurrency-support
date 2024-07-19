@@ -88,19 +88,46 @@ public func timeoutTask<T: Sendable>(
   return try await task.value(timeout: nanoseconds, onTimeout: onTimeout)
 }
 
+/// The task generated errors while using `Task` functions in this library.
+public struct TaskError: Swift.Error, RawRepresentable, Equatable {
+
+  /// The TaskError's code.
+  public struct Code: CustomStringConvertible, Equatable {
+    public let code: Int
+    public var description: String
+  }
+
+  public var rawValue: Code
+  public init(rawValue: Code) {
+    self.rawValue = rawValue
+  }
+}
+
+extension TaskError.Code {
+
+  public static let weakCapturingObjectReleasedCode = Self(
+    code: 1,
+    description: "The weak capturing object has been released.")
+
+  public static let timeoutCode = Self(code: 2, description: "Task timeout.")
+}
+
+extension TaskError {
+
+  /// The error thrown when the weak capturing object has been released.
+  public static let weakCapturingObjectReleased = TaskError(rawValue: .weakCapturingObjectReleasedCode)
+
+  /// The error thrown when the task timeout calling ``value(timeout:onTimeout:)``.
+  public static let timeout = TaskError(rawValue: .timeoutCode)
+}
+
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 extension Task where Failure == any Error {
-
-  /// The task generated errors using in custom `Task` extension.
-  public enum CustomError: Error {
-    case capturingObjectReleased
-    case timeout
-  }
 
   /// Get task's success value with a timeout limitation.
   /// - Important: If the task is a computationally-intensive process, guarantee to add `Task.checkCancellaction()`
   /// and `Task.yield()` to check the task whether has been cancelled already.
-  /// - Important: When timeout there will be raised a "CustomError.timeout".
+  /// - Important: When timeout there will be raised a "TaskError.timeout".
   /// - Parameters:
   ///   - nanoseconds: Timeout limitation
   ///   - onTimeout: Timeout handler.
@@ -116,7 +143,7 @@ extension Task where Failure == any Error {
           // self.isCancelled - may get cancelled by other process.
           if !Task<Never, Never>.isCancelled {
             onTimeout?()
-            continuation.resume(throwing: CustomError.timeout)
+            continuation.resume(throwing: TaskError.timeout)
             self.cancel()
           }
         } catch {
@@ -139,7 +166,7 @@ extension Task where Failure == any Error {
   /// Get task's success value with a timeout duration limitation.
   /// - Important: If the task is a computationally-intensive process, guarantee to add `Task.checkCancellaction()`
   /// and `Task.yield()` to check the task whether has been cancelled already, or the task may run infinitely.
-  /// - Important: When timeout there will be raised a "CustomError.timeout".
+  /// - Important: When timeout there will be raised a "TaskError.timeout".
   /// - Parameters:
   ///   - duration: Timeout limitation in Duration.
   ///   - onTimeout: Timeout handler
@@ -156,7 +183,7 @@ extension Task where Failure == any Error {
           // self.isCancelled - may get cancelled by other process.
           if !Task<Never, Never>.isCancelled {
             onTimeout?()
-            continuation.resume(throwing: CustomError.timeout)
+            continuation.resume(throwing: TaskError.timeout)
             self.cancel()
           }
         } catch {
@@ -206,7 +233,7 @@ extension Task where Failure == any Error {
     operation: @escaping (T) async throws -> Success
   ) -> Self where T: AnyObject, Failure == any Error {
     self.detached(priority: priority) { [weak object] in
-      guard let object else { throw CustomError.capturingObjectReleased }
+      guard let object else { throw TaskError.weakCapturingObjectReleased }
       return try await operation(object)
     }
   }
