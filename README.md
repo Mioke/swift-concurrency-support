@@ -5,6 +5,8 @@
 ![Swift Package Manager](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg)
 ![Supported Platforms: iOS, macOS, tvOS, watchOS & Linux](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20tvOS%20%7C%20watchOS%20%7C%20Linux-333333.svg)
 
+Currently pre-release version, continuously optimizing and adding new features.
+
 ## Install
 
 ### Using CocoaPods
@@ -95,7 +97,32 @@ Task {
 }
 ```
 
-* `AsyncOperation` : Wrapped async operation. Provides `flatMap`, `map`, `combine` functions to manipulate the operations' result.
+* `TaskQueue`: Run `Task` one by one, have task metrics when task is finished.
+
+```swift
+for index in assuming {
+  let task = queue.enqueueTask {
+    try! await Task.sleep(for: .seconds(1))
+    print("running", index)
+    return index
+  }
+  tasks.append(task)
+}
+
+let results = try await tasks.asyncMap { try await $0.value }
+XCTAssert(results == assuming)
+
+/*
+Metrics's log:
+id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
+  waitingDuration: 1.00012505054473876953
+  executionDuration: 1.042160987854004
+*/
+```
+
+## Functional Programming
+
+* `AsyncOperation` : Wrapped async operation, provide basic functional programming unit. Provides `flatMap`, `map`, `combine` and lots of operators to manipulate the operation.
 
 ```swift
 let operation1: AsyncOperation<Int> = .init {
@@ -131,29 +158,6 @@ Task {
     return 2
   }
 }
-```
-
-* `TaskQueue`: Run `Task` one by one, have task metrics when task is finished.
-
-```swift
-for index in assuming {
-  let task = queue.enqueueTask {
-    try! await Task.sleep(for: .seconds(1))
-    print("running", index)
-    return index
-  }
-  tasks.append(task)
-}
-
-let results = try await tasks.asyncMap { try await $0.value }
-XCTAssert(results == assuming)
-
-/*
-Metrics's log:
-id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
-  waitingDuration: 1.00012505054473876953
-  executionDuration: 1.042160987854004
-*/
 ```
 
 * Other supporting features.

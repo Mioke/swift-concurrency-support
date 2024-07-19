@@ -65,7 +65,7 @@ extension AsyncStream {
   public init<S: AsyncSequence>(_ sequence: S) where S.Element == Element {
     let lock = NSLock()
     var iterator: S.AsyncIterator?
-    self.init { 
+    self.init {
       lock.withLock {
         if iterator == nil {
           iterator = sequence.makeAsyncIterator()
@@ -83,6 +83,18 @@ extension AsyncStream {
   /// An `AsyncStream` that never emits and completes immediately.
   public static var finished: Self {
     Self { $0.finish() }
+  }
+
+  /// An `AsyncStream` that emits the given values and then completes.
+  public static func values(_ values: Element...) -> Self {
+    var iterator = values.makeIterator()
+    return Self { iterator.next() }
+  }
+
+  /// An `AsyncStream` that emits the given sequence of values and then completes.
+  public static func values<S: Sequence>(_ values: S) -> Self where S.Element == Element {
+    var iterator = values.makeIterator()
+    return Self { iterator.next() }
   }
 }
 
@@ -124,6 +136,18 @@ extension AsyncThrowingStream where Failure == Error {
   /// - Parameter error: An optional error the stream completes with.
   public static func finished(throwing error: Failure? = nil) -> Self {
     Self { $0.finish(throwing: error) }
+  }
+
+  /// An `AsyncStream` that emits the given values and then completes.
+  public static func values(_ values: Element...) -> Self {
+    var iterator = values.makeIterator()
+    return Self { iterator.next() }
+  }
+
+  /// An `AsyncStream` that emits the given sequence of values and then completes.
+  public static func values<S: Sequence>(_ values: S) -> Self where S.Element == Element {
+    var iterator = values.makeIterator()
+    return Self { iterator.next() }
   }
 }
 
