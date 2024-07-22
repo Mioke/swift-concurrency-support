@@ -136,30 +136,12 @@ extension Task where Failure == any Error {
     async throws -> Success
   {
     return try await withCheckedThrowingContinuation { continuation in
-      let cooperateTask = Task<Void, Never> {
-        do {
+      _timeout(
+        continuation: continuation,
+        onTimeout: onTimeout,
+        waitBlock: {
           try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
-          // Task.isCancelled - get the value or an error before timed-out.
-          // self.isCancelled - may get cancelled by other process.
-          if !Task<Never, Never>.isCancelled {
-            onTimeout?()
-            continuation.resume(throwing: TaskError.timeout)
-            self.cancel()
-          }
-        } catch {
-          if !Task<Never, Never>.isCancelled {
-            continuation.resume(throwing: error)
-          }
-        }
-      }
-      Task<Void, Never> {
-        do {
-          continuation.resume(returning: try await self.value)
-        } catch {
-          if !self.isCancelled { continuation.resume(throwing: error) }
-        }
-        cooperateTask.cancel()
-      }
+        })
     }
   }
 
@@ -176,30 +158,49 @@ extension Task where Failure == any Error {
     async throws -> Success
   {
     return try await withCheckedThrowingContinuation { continuation in
-      let cooperateTask = Task<Void, Never> {
-        do {
+      _timeout(
+        continuation: continuation,
+        onTimeout: onTimeout,
+        waitBlock: {
           try await Task<Never, Never>.sleep(for: duration)
-          // Task.isCancelled - get the value or an error before timed-out.
-          // self.isCancelled - may get cancelled by other process.
-          if !Task<Never, Never>.isCancelled {
-            onTimeout?()
-            continuation.resume(throwing: TaskError.timeout)
-            self.cancel()
-          }
-        } catch {
-          if !Task<Never, Never>.isCancelled {
-            continuation.resume(throwing: error)
-          }
+        })
+    }
+  }
+
+  private func _timeout(
+    continuation: CheckedContinuation<Success, Error>,
+    onTimeout: (@Sendable () -> Void)?,
+    waitBlock: @escaping () async throws -> Void
+  ) {
+    let isContinuationResumed: ThreadSafe<Bool> = .init(wrappedValue: false)
+    let cooperateTask = Task<Void, Never> {
+      do {
+        try await waitBlock()
+        // Task.isCancelled - get the value or an error before timed-out.
+        // self.isCancelled - may get cancelled by other process.
+        if !Task<Never, Never>.isCancelled {
+          onTimeout?()
+          isContinuationResumed.wrappedValue = true
+          continuation.resume(throwing: TaskError.timeout)
+          self.cancel()
+        }
+      } catch {
+        if isContinuationResumed.wrappedValue == false {
+          continuation.resume(throwing: error)
         }
       }
-      Task<Void, Never> {
-        do {
-          continuation.resume(returning: try await self.value)
-        } catch {
-          if !self.isCancelled { continuation.resume(throwing: error) }
+    }
+    Task<Void, Never> {
+      do {
+        continuation.resume(returning: try await self.value)
+        isContinuationResumed.wrappedValue = true
+      } catch {
+        if !self.isCancelled {
+          isContinuationResumed.wrappedValue = true
+          continuation.resume(throwing: error)
         }
-        cooperateTask.cancel()
       }
+      cooperateTask.cancel()
     }
   }
 

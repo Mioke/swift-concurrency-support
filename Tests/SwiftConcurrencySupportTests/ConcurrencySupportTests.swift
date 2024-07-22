@@ -426,8 +426,7 @@ class ConcurrencySupportTestCases: XCTestCase {
     } catch {
       print("###", error, await task.result)
 
-      if /*case Task<String, any Error>.CustomError.timeout = error*/
-      error is CancellationError {
+      if error is CancellationError {
         XCTAssert(true)
       } else {
         XCTAssert(false)
@@ -453,7 +452,7 @@ class ConcurrencySupportTestCases: XCTestCase {
         print("on timeout")
       }
       print("# value")
-
+      XCTAssert(false)
     } catch {
       print("###", error)
       if let error = error as? TaskError {
