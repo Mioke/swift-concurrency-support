@@ -342,6 +342,10 @@ class ConcurrencySupportTestCases: XCTestCase {
     await fulfillment(of: [expect], timeout: 10)
   }
 
+}
+
+@available(iOS 16, *)
+class TimeoutTestCases: XCTestCase {
   func testTimeout1() async throws {
     let result = try? await timeoutTask(with: 2 * NSEC_PER_SEC) {
       var count = 0
@@ -471,7 +475,6 @@ class ConcurrencySupportTestCases: XCTestCase {
     let result = try await task.value(timeout: .seconds(2))
     XCTAssert(result == 1)
   }
-
 }
 
 @available(iOS 16, *)

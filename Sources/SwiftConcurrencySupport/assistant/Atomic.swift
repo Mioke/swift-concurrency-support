@@ -209,3 +209,32 @@ extension RwLock: Protectable {
 }
 
 extension UnfairLock: Protectable {}
+
+/// An Actor wrapper which protects the value from data race.
+public actor ActorAtomic<T> {
+  /// The value to protect.
+  public var value: T
+
+  /// Initialize the value.
+  /// - Parameter value: The initial value.
+  public init(value: T) {
+    self.value = value
+  }
+
+  /// Modify the value.
+  /// - Parameter action: The action to modify the value.
+  public func modify(action: (inout T) async throws -> Void) async rethrows {
+    try await invoke { 
+      var current = $0.value
+      try await action(&current)
+      $0.value = current
+    }
+  }
+
+  /// Do actions with the value.
+  /// - Parameter action: The action to do.
+  /// - Returns: The result of the action.
+  public func with<U>(action: (T) async throws -> U) async rethrows -> U {
+    try await invoke { try await action($0.value) }
+  }
+}

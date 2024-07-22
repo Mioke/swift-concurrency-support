@@ -172,7 +172,7 @@ extension Task where Failure == any Error {
     onTimeout: (@Sendable () -> Void)?,
     waitBlock: @escaping () async throws -> Void
   ) {
-    let isContinuationResumed: ThreadSafe<Bool> = .init(wrappedValue: false)
+    let resumed: ActorAtomic<Bool> = .init(value: false)
     let cooperateTask = Task<Void, Never> {
       do {
         try await waitBlock()
@@ -180,12 +180,12 @@ extension Task where Failure == any Error {
         // self.isCancelled - may get cancelled by other process.
         if !Task<Never, Never>.isCancelled {
           onTimeout?()
-          isContinuationResumed.wrappedValue = true
+          await resumed.modify { $0 = true }
           continuation.resume(throwing: TaskError.timeout)
           self.cancel()
         }
       } catch {
-        if isContinuationResumed.wrappedValue == false {
+        if await resumed.value == false {
           continuation.resume(throwing: error)
         }
       }
@@ -193,10 +193,10 @@ extension Task where Failure == any Error {
     Task<Void, Never> {
       do {
         continuation.resume(returning: try await self.value)
-        isContinuationResumed.wrappedValue = true
+        await resumed.modify { $0 = true }
       } catch {
         if !self.isCancelled {
-          isContinuationResumed.wrappedValue = true
+          await resumed.modify { $0 = true }
           continuation.resume(throwing: error)
         }
       }
