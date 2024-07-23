@@ -202,6 +202,30 @@ extension AsyncOperation {
       return try await iterator.next()?.start()
     }
   }
+
+  /// Run the operation in a detached task context.
+  /// - Parameter priority: The detached task's priority. Default is nil.
+  /// - Returns: The detached operation.
+  public func detached(priority: TaskPriority? = nil) -> Self {
+    return .init {
+      let task = Task.detached(priority: priority) {
+        try await self.start()
+      }
+      return try await task.value
+    }
+  }
+
+  /// Adjust the operation's priority using ``Task``.
+  /// - Parameter priority: The new priority. Default is nil, means the same as the current task.
+  /// - Returns: The adjusted operation.
+  public func priority(_ priority: TaskPriority? = nil) -> Self {
+    return .init {
+      let task = Task(priority: priority) {
+        try await self.start()
+      }
+      return try await task.value
+    }
+  }
 }
 
 // MARK: - AsyncOperationQueue
