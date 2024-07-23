@@ -224,17 +224,15 @@ public actor ActorAtomic<T> {
   /// Modify the value.
   /// - Parameter action: The action to modify the value.
   public func modify(action: (inout T) async throws -> Void) async rethrows {
-    try await invoke { 
-      var current = $0.value
-      try await action(&current)
-      $0.value = current
-    }
+    var current = value
+    try await action(&current)
+    value = current
   }
 
   /// Do actions with the value.
   /// - Parameter action: The action to do.
   /// - Returns: The result of the action.
   public func with<U>(action: (T) async throws -> U) async rethrows -> U {
-    try await invoke { try await action($0.value) }
+    try await action(value)
   }
 }
