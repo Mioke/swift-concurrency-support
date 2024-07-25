@@ -82,7 +82,7 @@ struct AsyncSkipRepeatsStream<T: Equatable>: AsyncSequence {
     var baseIterator: AsyncStream<T>.AsyncIterator
     var last: T?
 
-    mutating func next() async throws -> T? {
+    mutating func next() async -> T? {
       while let next = await baseIterator.next() {
         if next != last {
           last = next
