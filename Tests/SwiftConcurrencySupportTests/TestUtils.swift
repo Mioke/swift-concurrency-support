@@ -63,7 +63,7 @@ extension Reactive where Base: AnyObject {
 }
 
 extension Result {
-  
+
   func error() -> Failure? {
     switch self {
     case .success(_):
@@ -71,5 +71,61 @@ extension Result {
     case .failure(let failure):
       return failure
     }
+  }
+}
+
+struct AsyncSkipRepeatsStream<T: Equatable>: AsyncSequence {
+  let stream: AsyncStream<T>
+  typealias Element = T
+
+  struct Iterator: AsyncIteratorProtocol {
+    var baseIterator: AsyncStream<T>.AsyncIterator
+    var last: T?
+
+    mutating func next() async throws -> T? {
+      while let next = await baseIterator.next() {
+        if next != last {
+          last = next
+          return next
+        }
+      }
+      return nil
+    }
+  }
+
+  func makeAsyncIterator() -> Iterator {
+    Iterator(baseIterator: stream.makeAsyncIterator())
+  }
+
+  init<S: AsyncSequence>(_ sequence: S) where S.Element == T {
+    stream = .init(sequence)
+  }
+}
+
+extension AsyncSequence where Element: Equatable {
+  func skipRepeats() -> AsyncSkipRepeatsStream<Element> {
+    return AsyncSkipRepeatsStream(self)
+  }
+}
+
+// extension AsyncStream {
+//   func map<T>(_ conversion: @escaping (Element) -> T) -> AsyncStream<T> {
+//     var iterator = self.makeAsyncIterator()
+//     return .init {
+//       if let value = await iterator.next() {
+//         return conversion(value)
+//       }
+//       return nil
+//     }
+//   }
+// }
+
+private func foo<T>(stream: AsyncStream<T>) async {
+  let result: AsyncFilterSequence<AsyncMapSequence<AsyncStream<T>, T>> = stream.map { return $0 }
+    .filter { _ in true }
+
+  var iterator = result.makeAsyncIterator()
+  while let value = await iterator.next() {
+    print(value)
   }
 }

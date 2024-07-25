@@ -236,3 +236,5 @@ public actor ActorAtomic<T> {
     try await action(value)
   }
 }
+
+extension ActorAtomic: Sendable where T: Sendable {}

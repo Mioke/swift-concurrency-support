@@ -56,6 +56,8 @@ public struct AsyncOperation<Success> {
   }
 }
 
+// MARK: - AsyncOperation's Operators
+
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 extension AsyncOperation {
 
@@ -82,6 +84,21 @@ extension AsyncOperation {
     }
   }
 
+  /// Map the failure to a new operation.
+  /// - Parameter conversion: The failure conversion closure.
+  /// - Returns: The result mapped operation.
+  public func mapError(
+    _ conversion: @escaping (Swift.Error) throws -> AsyncOperation<Success>
+  ) -> AsyncOperation<Success> {
+    return .init {
+      do {
+        return try await self.start()
+      } catch {
+        return try await conversion(error).start()
+      }
+    }
+  }
+
   /// Combine current operation with another operation.
   /// - Parameter operation: Another operation.
   /// - Returns: The combined operation.
@@ -94,7 +111,7 @@ extension AsyncOperation {
   }
 
   /// Combine multiple operations together and get their results in once. All the operations will run asynchrounously.
-  /// - Important: If one operation fails, the whole operation will fail immediately and cancel all other tasks. But 
+  /// - Important: If one operation fails, the whole operation will fail immediately and cancel all other tasks. But
   /// other running operations will continue to run until finished if you don't have any Task.isCancelled check.
   /// - Parameter operations: The operations going to combined.
   /// - Returns: The combined operation.
@@ -112,6 +129,16 @@ extension AsyncOperation {
   public static func concat(_ operations: [AsyncOperation<Success>]) -> AsyncOperation<[Success]> {
     return .init {
       return try await operations.asyncMap { try await $0.start() }
+    }
+  }
+
+  /// Merge multiple operations into one AsyncThrowingStream. The operations will run one by one.
+  /// - Parameter operations: The operations going to be merged.
+  /// - Returns: The merged stream.
+  public static func merge(_ operations: [AsyncOperation<Success>]) -> AsyncThrowingStream<Success, Swift.Error> {
+    var iterator = operations.makeIterator()
+    return .init {
+      return try await iterator.next()?.start()
     }
   }
 
@@ -165,18 +192,17 @@ extension AsyncOperation {
     }
   }
 
-  /// Map the failure to a new operation.
-  /// - Parameter conversion: The failure conversion closure.
-  /// - Returns: The result mapped operation.
-  public func mapError(
-    _ conversion: @escaping (Swift.Error) throws -> AsyncOperation<Success>
-  ) -> AsyncOperation<Success> {
+  /// Delay the operation.
+  /// - Parameter interval: The delay interval, unit is second.
+  /// - Returns: The delayed operation.
+  public func delay(_ interval: TimeInterval) -> AsyncOperation<Success> {
     return .init {
-      do {
-        return try await self.start()
-      } catch {
-        return try await conversion(error).start()
+      if #available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *) {
+        try await Task.sleep(for: .seconds(interval))
+      } else {
+        try await Task.sleep(nanoseconds: UInt64(interval * Double(NSEC_PER_SEC)))
       }
+      return try await self.start()
     }
   }
 
@@ -193,13 +219,16 @@ extension AsyncOperation {
     }
   }
 
-  /// Merge multiple operations into one AsyncThrowingStream. The operations will run one by one.
-  /// - Parameter operations: The operations going to be merged.
-  /// - Returns: The merged stream.
-  public static func merge(_ operations: [AsyncOperation<Success>]) -> AsyncThrowingStream<Success, Swift.Error> {
-    var iterator = operations.makeIterator()
+  public func check(after: TimeInterval, handler: @escaping () async -> Void) -> AsyncOperation<Success> {
     return .init {
-      return try await iterator.next()?.start()
+      let isFinished: ActorAtomic<Bool> = .init(value: false)
+      Task {
+        try await Task.sleep(nanoseconds: UInt64(after * Double(NSEC_PER_SEC)))
+        if await isFinished.value == false { await handler() }
+      }
+      let result = try await self.start()
+      await isFinished.modify { $0 = true }
+      return result
     }
   }
 
@@ -407,9 +436,9 @@ extension AsyncOperation {
 /// ```
 /// Or it only must unsafe cast the throwing error to the `Failure` type, which is not good.
 /// After Swift 6 released we can use `throw(ErrorType)` to limit the throwing error type.
-/// 
-/// Why `AsyncOperation<Success, Failure>` is good? Because when the operation has no error to throw, the type 
-/// `AsyncOperation<Success, Never>` can be better understand, and the `start() async` function would have a 
+///
+/// Why `AsyncOperation<Success, Failure>` is good? Because when the operation has no error to throw, the type
+/// `AsyncOperation<Success, Never>` can be better understand, and the `start() async` function would have a
 /// non-throwing version.
 private struct AsyncProducer<Success, Failure> where Failure: Swift.Error {
   typealias Operation = () async -> Result<Success, Failure>

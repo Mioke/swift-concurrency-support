@@ -959,6 +959,40 @@ class AsyncOperationTestCases: XCTestCase {
     }
   }
 
+  func testCheckAfter() async throws {
+    var checked = false
+    let operation: AsyncOperation<Int> = .init {
+      var counter = 0
+      print("start")
+      while counter < 900_000_000 { counter += 1 }
+      print("end")
+      return counter
+    }
+    .check(
+      after: 1,
+      handler: {
+        print("checked")
+        checked = true
+      })
+
+    let result = await operation.startWithResult()
+    print(try result.get())
+
+    XCTAssert(checked == true)
+  }
+
+  func testCheckAfterNotReached() async throws {
+    let operation: AsyncOperation<Int> = .init {
+      return 1
+    }
+    .check(after: 1) {
+      XCTAssert(false)
+    }
+
+    let result = await operation.startWithResult()
+    print(try result.get())
+  }
+
   func testMergeOperator() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
