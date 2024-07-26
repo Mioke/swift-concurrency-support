@@ -1,5 +1,5 @@
 //
-//  TaskQueue.swift
+//  TaskPriorityQueue.swift
 //  MIOSwiftyArchitecture
 //
 //  Created by Klein on 2024/7/2.
@@ -8,23 +8,25 @@
 import Foundation
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Result<Value, E>>
+public typealias ThrowingTaskPriorityQueue<Value, E: Swift.Error> = TaskPriorityQueue<Swift.Result<Value, E>>
 
-/// Run tasks one by one, FIFO.
+/// Run tasks one by one, the tasks will be executed in the order of priority, the tasks with the same priority 
+/// will be executed in the order of enqueuing.
+/// - Important: Don't enqueue a new task inside another task, it will cause a deadlock.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-final public class TaskQueue<Element> : @unchecked Sendable {
+final public class TaskPriorityQueue<Element> : @unchecked Sendable {
 
   /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
-  public var metricsConfiguration: TaskQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
+  public var metricsConfiguration: TaskPriorityQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
     didSet {
       resetMetrics()
     }
   }
 
   @ThreadSafe
-  private var array: [TaskItem] = []
+  private var array: PriorityQueue<TaskItem> = .init()
 
-  private var metrics: [UUID: TaskQueue.Metrics] = [:]
+  private var metrics: [UUID: TaskPriorityQueue.Metrics] = [:]
   private var metricsCacheIndex: [UUID] = []
 
   private var stream: AsyncMulticast<TaskItem> = .init()
@@ -48,14 +50,16 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   /// - Parameters:
   ///   - id: Task id, for tracking purpose.
   ///   - task: The task you want to enqueue.
+  ///   - priority: The priority of the task, default is `.medium`.
   ///   - onFinished: Finish callback closure. If the result is nil, that means the `TaskQueue` has already been
   ///   deallocated before this task is finished.
   public func addTask(
     id: UUID = .init(),
+    priority: PriorityQueuePriority = .medium,
     _ task: @escaping () async throws -> Element,
     onFinished: @escaping (Result<Element, Swift.Error>) -> Void
   ) {
-    let item = enqueueTask(with: id, task: task)
+    let item = enqueueTask(with: id, priority: priority, task: task)
     Task { [weak self] in
       await self?.waitUntilAvailable(item: item)()
       do {
@@ -71,10 +75,13 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   /// the queue is deallocated.
   /// - Parameters:
   ///   - id: Task id, for tracking purpose.
+  ///   - priority: The priority of the task, default is `.medium`.
   ///   - task: The task you want to enqueue.
   /// - Returns: The task's result.
-  public func task(id: UUID = .init(), _ task: @escaping () async throws -> Element) async rethrows -> Element {
-    let item = enqueueTask(with: id, task: task)
+  public func task(
+    id: UUID = .init(), priority: PriorityQueuePriority = .medium, _ task: @escaping () async throws -> Element
+  ) async rethrows -> Element {
+    let item = enqueueTask(with: id, priority: priority, task: task)
     // The `await`s here will capture `self` and delay the deallocation if the queue has no other owners.
     await waitUntilAvailable(item: item)()
     // for the `rethrows` feature, can only call the parameter task here.
@@ -87,11 +94,14 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   /// not be awaited and the task will be inserted into the queue immediately.
   /// - Parameters:
   ///   - id: Task's id, for tracking purpose.
+  ///   - priority: The task's priority, default is `.medium`.
   ///   - task: The task.
   /// - Returns: The wrapped Task.
   @discardableResult
-  public func enqueueTask(id: UUID = .init(), task: @escaping () async throws -> Element) -> Task<Element, Error> {
-    let item = enqueueTask(with: id, task: task)
+  public func enqueueTask(
+    id: UUID = .init(), priority: PriorityQueuePriority = .medium, task: @escaping () async throws -> Element
+  ) -> Task<Element, Error> {
+    let item = enqueueTask(with: id, priority: priority, task: task)
     return .init { [weak self] in
       await self?.waitUntilAvailable(item: item)()
       if self == nil { throw _Concurrency.CancellationError() }
@@ -99,7 +109,11 @@ final public class TaskQueue<Element> : @unchecked Sendable {
     }
   }
 
-  private func enqueueTask(with id: UUID, task: @escaping () async throws -> Element) -> TaskItem {
+  private func enqueueTask(
+    with id: UUID,
+    priority: PriorityQueuePriority,
+    task: @escaping () async throws -> Element
+  ) -> TaskItem {
     let item = TaskItem(
       id: id,
       originalTask: task,
@@ -110,7 +124,7 @@ final public class TaskQueue<Element> : @unchecked Sendable {
         checkNext()
       })
     _array.write { array in
-      array.append(item)
+      array.enqueue(item, priority: priority)
       metrics(id: id)
     }
     return item
@@ -135,8 +149,7 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   private func checkNext() {
     let next: TaskItem? = _array.write { array in
       // `isRunning` must be protected by the `write`, because this whole logic determine the `isRunning` state.
-      guard isRunning == false, let next = array.first else { return nil }
-      array.removeFirst()
+      guard isRunning == false, let next = array.dequeue() else { return nil }
       isRunning = true
       return next
     }
@@ -155,7 +168,7 @@ final public class TaskQueue<Element> : @unchecked Sendable {
 // MARK: - Metrics
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-extension TaskQueue {
+extension TaskPriorityQueue {
 
   /// The task's metrics of whole enqueueing and execution.
   public struct Metrics {
@@ -227,7 +240,7 @@ extension TaskQueue {
   func markMetricsAsEnd(id: UUID) {
     modifyMetrics(id: id) { $0.endExecutionTime = CFAbsoluteTimeGetCurrent() }
   }
-  
+
   func modifyMetrics(id: UUID, modification: (inout Metrics) -> Void) {
     guard metricsConfiguration != .disabled else { return }
     guard var metr = metrics[id] else { return }
@@ -242,7 +255,7 @@ extension TaskQueue {
 }
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-extension TaskQueue.Metrics: CustomStringConvertible {
+extension TaskPriorityQueue.Metrics: CustomStringConvertible {
   public var description: String {
     var desc = "id: \(id)"
     desc += "\n - waitingDuration: \(waitingDuration ?? -1)"
