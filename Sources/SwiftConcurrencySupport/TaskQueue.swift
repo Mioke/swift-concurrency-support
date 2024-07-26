@@ -44,6 +44,9 @@ final public class TaskQueue<Element> : @unchecked Sendable {
     }
   }
 
+  /// The initializer of `TaskQueue`.
+  public init() { }
+
   /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
   /// - Parameters:
   ///   - id: Task id, for tracking purpose.

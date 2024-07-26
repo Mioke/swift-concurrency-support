@@ -12,7 +12,7 @@ import XCTest
 import os
 
 #if canImport(SwiftConcurrencySupport)
-  @testable import SwiftConcurrencySupport
+  import SwiftConcurrencySupport
 #endif
 
 enum InternalError: Error, Equatable {
@@ -731,7 +731,7 @@ class TaskQueueTestCases: XCTestCase {
 
 @available(iOS 16, *)
 class TaskPriorityQueueTestCases: XCTestCase {
-  
+
   func testPriorityQueue() async throws {
     let expect = XCTestExpectation()
     let queue = TaskPriorityQueue<Void>()
