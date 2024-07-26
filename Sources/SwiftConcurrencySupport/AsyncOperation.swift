@@ -219,6 +219,12 @@ extension AsyncOperation {
     }
   }
 
+  /// Check the operation after a given time. If the operation does not finish in the given time, it will run the 
+  /// handler.
+  /// - Parameters:
+  ///   - after: The check duration, unit is second.
+  ///   - handler: The handler to run when the operation does not finish in the given time.
+  /// - Returns: The operation with a check limit.
   public func check(after: TimeInterval, handler: @escaping () async -> Void) -> AsyncOperation<Success> {
     return .init {
       let isFinished: ActorAtomic<Bool> = .init(value: false)
