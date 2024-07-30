@@ -64,12 +64,12 @@ extension AsyncOperation {
   /// Flat map to a new `AyncOperation`, usally can chain two operations together.
   /// - Parameter conversion: The new operation producer.
   /// - Returns: The chained operation.
-  public func flatMap<T>(_ conversion: @escaping (Success) throws -> AsyncOperation<T>)
+  public func flatMap<T>(_ conversion: @escaping (Success) async throws -> AsyncOperation<T>)
     -> AsyncOperation<T>
   {
     return .init {
       let result = try await self.start()
-      let next = try conversion(result)
+      let next = try await conversion(result)
       return try await next.start()
     }
   }
@@ -77,10 +77,10 @@ extension AsyncOperation {
   /// Map the result to a new value.
   /// - Parameter conversion: The result conversion closure.
   /// - Returns: The result mapped operation.
-  public func map<T>(_ conversion: @escaping (Success) throws -> T) -> AsyncOperation<T> {
+  public func map<T>(_ conversion: @escaping (Success) async throws -> T) -> AsyncOperation<T> {
     return .init {
       let result = try await self.start()
-      return try conversion(result)
+      return try await conversion(result)
     }
   }
 
@@ -88,7 +88,7 @@ extension AsyncOperation {
   /// - Parameter conversion: The failure conversion closure.
   /// - Returns: The result mapped operation.
   public func mapError(
-    _ conversion: @escaping (Swift.Error) throws -> AsyncOperation<Success>
+    _ conversion: @escaping (Swift.Error) async throws -> AsyncOperation<Success>
   ) -> AsyncOperation<Success> {
     return .init {
       do {
