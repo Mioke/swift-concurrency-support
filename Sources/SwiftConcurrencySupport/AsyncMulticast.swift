@@ -281,9 +281,26 @@ extension AsyncThrowingStream {
 
 /// For the feature like `Property<T>` in `ReactiveSwift`
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-final public class AsyncProperty<T> {
+final public class AsyncProperty<T>: AsyncSequence {
+  public typealias AsyncIterator = Iterator
+  public typealias Element = T
+
+  public struct Iterator: AsyncIteratorProtocol {
+    var iterator: AsyncStream<T>.AsyncIterator
+    let token: UnsubscribeToken
+
+    public mutating func next() async -> T? {
+      return await iterator.next()
+    }
+  }
+
   let multicaster: AsyncMulticast<T> = .init(bufferSize: 1)
   let initialValue: T
+
+  public func makeAsyncIterator() -> Iterator {
+    let subscriber = subscribe()
+    return .init(iterator: subscriber.stream.makeAsyncIterator(), token: subscriber.token)
+  }
 
   /// Initialization
   /// - Parameter wrappedValue: initial value.

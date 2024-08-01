@@ -61,6 +61,81 @@ class ConcurrencySupportTestCases: XCTestCase {
   }
 
   @available(iOS 16.0, *)
+  func testAsyncPropertyAsAsyncSequence() async throws {
+    let property: AsyncProperty<Int> = .init(initialValue: 1)
+    let expect = XCTestExpectation()
+
+    Task {
+      // visit
+      var results = [Int]()
+      for await value in property {
+        results.append(value)
+        if results.count == 5 {
+          break
+        }
+      }
+      print(results)
+      XCTAssert(results == [0, 1, 2, 3, 4])
+      expect.fulfill()
+    }
+
+    await Task.yield()
+
+    Task {
+      for value in 0..<5 {
+        property.update(value)
+        try await Task.sleep(for: .seconds(0.01))
+      }
+    }
+    await fulfillment(of: [expect], timeout: 1)
+  }
+
+  @available(iOS 16.0, *)
+  func testAsyncPropertyAsAsyncSequenceUsingInMultipleTask() async throws {
+    let property: AsyncProperty<Int> = .init(initialValue: 1)
+    let expect = XCTestExpectation()
+
+    Task {
+      // visit
+      var results = [Int]()
+      for await value in property {
+        results.append(value)
+        if results.count == 5 {
+          break
+        }
+      }
+      print(results)
+      XCTAssert(results == [0, 1, 2, 3, 4])
+    }
+
+    await Task.yield()
+
+    Task {
+      // visit
+      var results = [Int]()
+      for await value in property {
+        results.append(value)
+        if results.count == 3 {
+          break
+        }
+      }
+      print(results)
+      XCTAssert(results == [0, 1, 2])
+    }
+
+    await Task.yield()
+
+    Task {
+      for value in 0..<6 {
+        property.update(value)
+        try await Task.sleep(for: .seconds(0.01))
+      }
+      expect.fulfill()
+    }
+    await fulfillment(of: [expect], timeout: 1)
+  }
+
+  @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream1() async throws {
     let stream: AsyncThrowingSignalStream<Int> = .init()
 
