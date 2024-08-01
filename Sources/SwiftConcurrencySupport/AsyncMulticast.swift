@@ -281,21 +281,7 @@ extension AsyncThrowingStream {
 
 /// For the feature like `Property<T>` in `ReactiveSwift`
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public class AsyncProperty<T> : AsyncSequence, @unchecked Sendable {
-
-  public typealias AsyncIterator = AsyncStream<T>.AsyncIterator
-  public typealias Element = T
-
-  var sequenceSubscribeTokens: [UnsubscribeToken] = []
-
-  public func makeAsyncIterator() -> AsyncStream<T>.AsyncIterator {
-    let subscriber = subscribe()
-    /// store the token forever, because the awaiting of a stream can't be canceled until the stream is finished, and 
-    /// the stream of this property can only finish when this property is released.
-    sequenceSubscribeTokens.append(subscriber.token)
-    return subscriber.stream.makeAsyncIterator()
-  }
-
+final public class AsyncProperty<T> {
   let multicaster: AsyncMulticast<T> = .init(bufferSize: 1)
   let initialValue: T
 
@@ -320,3 +306,5 @@ public class AsyncProperty<T> : AsyncSequence, @unchecked Sendable {
     return multicaster.subscribe()
   }
 }
+
+extension AsyncProperty: Sendable where T: Sendable {}
