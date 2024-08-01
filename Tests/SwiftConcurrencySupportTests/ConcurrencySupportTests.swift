@@ -67,11 +67,11 @@ class ConcurrencySupportTestCases: XCTestCase {
     let expect = XCTestExpectation()
 
     Task.detached {
-      try await Task.sleep(for: Duration.seconds(2))
-      await stream.send(signal: 1)
+      try await Task.sleep(for: Duration.seconds(0.1))
+      stream.send(signal: 1)
 
-      try await Task.sleep(for: Duration.seconds(2))
-      await stream.send(signal: 2)
+      try await Task.sleep(for: Duration.seconds(0.1))
+      stream.send(signal: 2)
     }
 
     Task {
@@ -85,7 +85,7 @@ class ConcurrencySupportTestCases: XCTestCase {
       expect.fulfill()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   enum InternalError: Error {
@@ -98,11 +98,11 @@ class ConcurrencySupportTestCases: XCTestCase {
     let stream: AsyncThrowingSignalStream<Int> = .init()
 
     Task.detached {
-      try await Task.sleep(for: Duration.seconds(2))
-      await stream.send(signal: 1)
+      try await Task.sleep(for: Duration.seconds(0.2))
+      stream.send(signal: 1)
 
-      try await Task.sleep(for: Duration.seconds(2))
-      await stream.send(error: InternalError.testError)
+      try await Task.sleep(for: Duration.seconds(0.2))
+      stream.send(error: InternalError.testError)
     }
 
     let task = Task {
@@ -131,16 +131,16 @@ class ConcurrencySupportTestCases: XCTestCase {
 
   // Test deinit.
   @available(iOS 16.0, *)
-  func testAsyncThrowingSignalStream3() async throws {
+  func testAsyncThrowingSignalStreamDealloc() async throws {
     let expect = XCTestExpectation()
     let task = Task {
-      _ = try await stream.wait { $0 == 1 }
+      _ = try await stream.weakWait { $0 == 1 }()
       XCTAssert(false)
     }
 
     Task {
-      try await Task.sleep(for: Duration.seconds(2))
-      await stream.invalid()
+      try await Task.sleep(for: Duration.seconds(0.2))
+      // stream.invalid()
       stream = .init()
 
       switch await task.result {
@@ -155,7 +155,7 @@ class ConcurrencySupportTestCases: XCTestCase {
       }
       expect.fulfill()
     }
-    await fulfillment(of: [expect], timeout: 3)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   var multicaster: AsyncThrowingMulticast<Int> = .init()
@@ -175,16 +175,18 @@ class ConcurrencySupportTestCases: XCTestCase {
       expect.fulfill()
     }
 
+    await Task.yield()
+
     Task {
       multicaster.cast(1)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster.cast(2)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster.cast(3)
       token.unsubscribe()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   // Test deinit
@@ -206,11 +208,11 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task {
       multicaster.cast(1)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster = .init()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   @available(iOS 16.0, *)
@@ -237,10 +239,10 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task {
       multicaster.cast(1)
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.1))
       multicaster.cast(error: InternalError.testError)
       multicaster.cast(2)
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.1))
       expect.fulfill()
     }
 
@@ -277,14 +279,14 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task {
       multicaster2.cast(1)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster2.cast(2)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster2.cast(3)
       token.unsubscribe()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   // Test deinit
@@ -306,11 +308,11 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task {
       multicaster2.cast(1)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       multicaster2 = .init()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   // Test buffer
@@ -335,11 +337,11 @@ class ConcurrencySupportTestCases: XCTestCase {
     Task {
       multicaster.cast(1)
       multicaster.cast(2)
-      try await Task.sleep(for: Duration.seconds(2))
+      try await Task.sleep(for: Duration.seconds(0.1))
       token.unsubscribe()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
 }
@@ -347,7 +349,7 @@ class ConcurrencySupportTestCases: XCTestCase {
 @available(iOS 16, *)
 class TimeoutTestCases: XCTestCase {
   func testTimeout1() async throws {
-    let result = try? await timeoutTask(with: 2 * NSEC_PER_SEC) {
+    let result = try? await timeoutTask(with: 1 * NSEC_PER_SEC) {
       var count = 0
       while true {
         count += 1
@@ -393,7 +395,7 @@ class TimeoutTestCases: XCTestCase {
     }
 
     do {
-      _ = try await task.value(timeout: .seconds(2)) {
+      _ = try await task.value(timeout: .seconds(0.2)) {
         print("on timeout")
       }
     } catch {
@@ -416,13 +418,13 @@ class TimeoutTestCases: XCTestCase {
     }
 
     Task {
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.2))
       print("# cancelling")
       task.cancel()
     }
 
     do {
-      _ = try await task.value(timeout: .seconds(5)) {
+      _ = try await task.value(timeout: .seconds(0.5)) {
         print("on timeout")
       }
       print("# value")
@@ -452,7 +454,7 @@ class TimeoutTestCases: XCTestCase {
     }
 
     do {
-      _ = try await task.value(timeout: .seconds(5)) {
+      _ = try await task.value(timeout: .seconds(0.5)) {
         print("on timeout")
       }
       print("# value")
@@ -469,7 +471,7 @@ class TimeoutTestCases: XCTestCase {
 
   func testNoTimeout() async throws {
     let task = Task {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       return 1
     }
     let result = try await task.value(timeout: .seconds(2))
@@ -487,14 +489,14 @@ class TaskQueueTestCases: XCTestCase {
 
     for index in assuming {
       let task = queue.enqueueTask {
-        try! await Task.sleep(for: .seconds(1))
+        try! await Task.sleep(for: .seconds(0.2))
         print("running", index)
         return index
       }
       tasks.append(task)
     }
 
-    try! await Task.sleep(for: .seconds(5))
+    try await Task.sleep(for: .seconds(0.5))
     print("Start to observe.")
 
     var results: [Int] = []
@@ -604,7 +606,7 @@ class TaskQueueTestCases: XCTestCase {
     Task {
       let result = await self.queue?.task {
         do {
-          try await Task.sleep(for: .seconds(5))
+          try await Task.sleep(for: .seconds(0.5))
         } catch {
           print("error", error)
         }
@@ -616,11 +618,11 @@ class TaskQueueTestCases: XCTestCase {
     }
 
     Task {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       self.queue = nil
       print("set to nil")
     }
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   func testDeallocation3() async throws {
@@ -643,7 +645,7 @@ class TaskQueueTestCases: XCTestCase {
     {
 
       Task {
-        try await Task.sleep(for: .seconds(1))
+        try await Task.sleep(for: .seconds(0.2))
         weak var tempQueue = self.queue
         self.queue = nil
         print("set to nil", tempQueue as Any)
@@ -668,7 +670,7 @@ class TaskQueueTestCases: XCTestCase {
 
     if let queue = self.queue {
       queue.addTask {
-        try! await Task.sleep(for: .seconds(3))
+        try! await Task.sleep(for: .seconds(0.5))
         return 1
       } onFinished: { result in
         do {
@@ -693,13 +695,13 @@ class TaskQueueTestCases: XCTestCase {
       }
 
       Task {
-        try await Task.sleep(for: .seconds(1))
+        try await Task.sleep(for: .seconds(0.1))
         print("set to nil")
         self.queue = nil
       }
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 1)
   }
 
   func testMetricsData() async throws {
@@ -707,14 +709,14 @@ class TaskQueueTestCases: XCTestCase {
 
     let id1 = UUID()
     let task1 = queue.enqueueTask(id: id1) {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("\(id1) done")
       return 1
     }
 
     let id2 = UUID()
     let task2 = queue.enqueueTask(id: id2) {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.2))
       print("\(id2) done")
       return 2
     }
@@ -832,7 +834,7 @@ class AsyncOperationTestCases: XCTestCase {
 
   func testOperation() async throws {
     let operation: AsyncOperation<Int> = .init {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       return 1
     }
 
@@ -842,7 +844,7 @@ class AsyncOperationTestCases: XCTestCase {
 
   func testOperationMultipleEntry() async throws {
     let operation: AsyncOperation<Int> = .init {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       return 1
     }
 
@@ -866,7 +868,7 @@ class AsyncOperationTestCases: XCTestCase {
   func testFlatMap() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
@@ -874,7 +876,7 @@ class AsyncOperationTestCases: XCTestCase {
     let operation2 = operation1.flatMap { result in
       return .init {
         print("Enter 2")
-        try await Task.sleep(for: .seconds(1))
+        try await Task.sleep(for: .seconds(0.1))
         print("Ending 2")
         return result + 1
       }
@@ -888,7 +890,7 @@ class AsyncOperationTestCases: XCTestCase {
   func testMap() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
@@ -898,7 +900,7 @@ class AsyncOperationTestCases: XCTestCase {
       .flatMap { result in
         return .init {
           print("Enter 2")
-          try await Task.sleep(for: .seconds(1))
+          try await Task.sleep(for: .seconds(0.1))
           print("Ending 2")
           return result + 1
         }
@@ -915,14 +917,14 @@ class AsyncOperationTestCases: XCTestCase {
   func testCombine() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
 
     let operation2: AsyncOperation<Int> = .init {
       print("Enter 2")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 2")
       return 2
     }
@@ -935,14 +937,14 @@ class AsyncOperationTestCases: XCTestCase {
   func testCombines() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.2))
       print("Ending 1")
       return 1
     }
 
     let operation2: AsyncOperation<Int> = .init {
       print("Enter 2")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 2")
       return 2
     }
@@ -973,7 +975,7 @@ class AsyncOperationTestCases: XCTestCase {
         XCTAssert(error is InternalError)
         counter += 1
       })
-      .retry(times: 3, interval: 1)
+      .retry(times: 3, interval: 0.1)
     let result = await operation1.startWithResult()
     XCTAssert(result.error() != nil)
     XCTAssert(counter == 4)
@@ -982,7 +984,7 @@ class AsyncOperationTestCases: XCTestCase {
   func testMultipleTransformation() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
@@ -999,7 +1001,7 @@ class AsyncOperationTestCases: XCTestCase {
       .flatMap { _ in
         return .init {
           print("Enter 2")
-          try await Task.sleep(for: .seconds(1))
+          try await Task.sleep(for: .seconds(0.1))
           print("Ending 2")
           return 2
         }
@@ -1026,13 +1028,13 @@ class AsyncOperationTestCases: XCTestCase {
   func testMetrics() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
     .metrics { metrics in
       print("Metrics \(metrics)")
-      XCTAssert(metrics.duration! > 1)
+      XCTAssert(metrics.duration! > 0.09)
     }
 
     let result = try await operation1.start()
@@ -1046,7 +1048,7 @@ class AsyncOperationTestCases: XCTestCase {
       print("Ending 1")
       return 1
     }
-    .timeout(after: 1)
+    .timeout(after: 0.1)
 
     let result = await operation.startWithResult()
     if let error = result.error() as? TaskError {
@@ -1062,12 +1064,12 @@ class AsyncOperationTestCases: XCTestCase {
     let operation: AsyncOperation<Int> = .init {
       var counter = 0
       print("start")
-      while counter < 900_000_000 { counter += 1 }
+      while counter < 100_000_000 { counter += 1 }
       print("end")
       return counter
     }
     .check(
-      after: 1,
+      after: 0.1,
       handler: {
         print("checked")
         checked = true
@@ -1094,14 +1096,14 @@ class AsyncOperationTestCases: XCTestCase {
   func testMergeOperator() async throws {
     let operation1: AsyncOperation<Int> = .init {
       print("Enter 1")
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 1")
       return 1
     }
 
     let operation2: AsyncOperation<Int> = .init {
       print("Enter 2")
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       print("Ending 2")
       return 2
     }
@@ -1127,12 +1129,14 @@ class AsyncOperationTestCases: XCTestCase {
       _ = mergedStream.makeAsyncIterator()
     }
 
+    await Task.yield()
+
     Task {
-      try await Task.sleep(for: .seconds(1))
+      try await Task.sleep(for: .seconds(0.1))
       expectation.fulfill()
     }
 
-    await fulfillment(of: [expectation], timeout: 2)
+    await fulfillment(of: [expectation], timeout: 1)
   }
 }
 
@@ -1141,13 +1145,15 @@ class AsyncOperationQueueTestCases: XCTestCase {
 
   func testOrder() async throws {
     let queue = AsyncOperationQueue()
-
+    let order: ActorAtomic<[Int]> = .init(value: [])
     Task {
       print("Running task 1")
       let result = try await queue.operation {
         print("enter operation 1")
-        try await Task.sleep(for: .seconds(2))
+        await order.modify { $0.append(1) }
+        try await Task.sleep(for: .seconds(0.2))
         print("after sleep operation 1")
+        await order.modify { $0.append(2) }
         return 1
       }
       print("Get result \(result)")
@@ -1159,14 +1165,19 @@ class AsyncOperationQueueTestCases: XCTestCase {
       print("Running task 2")
       let result = try await queue.operation {
         print("enter operation 2")
-        try await Task.sleep(for: .seconds(2))
+        await order.modify { $0.append(3) }
+        try await Task.sleep(for: .seconds(0.1))
         print("after sleep operation 2")
+        await order.modify { $0.append(4) }
         return 2
       }
       print("Get result \(result)")
     }
 
     _ = await task2.result
+    await order.with {
+      XCTAssert($0 == [1, 2, 3, 4])
+    }
   }
 
   func testConcurrentQueue() async throws {
@@ -1178,7 +1189,7 @@ class AsyncOperationQueueTestCases: XCTestCase {
         print("Running task \(i)")
         let result = try await queue.operation {
           print("enter operation \(i)")
-          try await Task.sleep(for: .seconds(2))
+          try await Task.sleep(for: .seconds(0.1))
           print("after sleep operation \(i)")
           return i
         }
@@ -1187,9 +1198,9 @@ class AsyncOperationQueueTestCases: XCTestCase {
           expect.fulfill()
         }
       }
-      try await Task.sleep(for: .seconds(0.2))
+      try await Task.sleep(for: .seconds(0.01))
     }
-
-    await fulfillment(of: [expect])
+    // 11 tasks, 2 concurrent at a time, total cost must be less than 1.1s
+    await fulfillment(of: [expect], timeout: 0.8)
   }
 }
