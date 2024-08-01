@@ -14,58 +14,62 @@ import Foundation
 /// 5. If there's a wait in the stream, the stream won't get deallocated, please call `invalid()` first
 ///    before relase a stream.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public actor AsyncThrowingSignalStream<T> {
+final public class AsyncThrowingSignalStream<T>: Sendable {
 
   public enum SignalError: Swift.Error {
     case closed
   }
 
-  private var continuations: [(condition: (T) -> Bool, continuation: CheckedContinuation<T, any Error>)] = []
+  let multicaster: AsyncThrowingMulticast<T> = .init()
 
   public init() {}
 
-  /// Try await a value signal
+  /// Try await a value signal.
+  /// - Caution: This function will capture this stream, which will cause this stream can't be deallocated! If still
+  ///   want to use this function, please call `invalid()` before release this stream.
   /// - Parameter signalCondition: A condition to determine whether the value is what caller waiting for.
   /// - Returns: The value.
   public func wait(for signalCondition: @escaping (T) -> Bool) async throws -> T {
-    return try await withCheckedThrowingContinuation { continuation in
-      continuations.append((condition: signalCondition, continuation: continuation))
+    let observer = multicaster.subscribe(where: signalCondition)
+    guard let value = try await observer.stream.first(where: signalCondition) else {
+      throw SignalError.closed
+    }
+    return value
+  }
+
+  /// Try await a value signal, this functions won't let this stream be captured, which leads to this stream can't be
+  /// deallocated.
+  /// - Parameter signalCondition: A condition to determine whether the value is what caller waiting for.
+  /// - Returns: The value.
+  public func weakWait(for signalCondition: @escaping (T) -> Bool) -> () async throws -> T {
+    return { [weak self] in
+      guard let observer = self?.multicaster.subscribe(where: signalCondition) else { throw SignalError.closed }
+      guard let value = try await observer.stream.first(where: signalCondition) else { throw SignalError.closed }
+      return value
     }
   }
 
   /// Send a value into this stream.
   /// - Parameter signal: A value.
   public func send(signal: T) {
-    continuations.removeAll {
-      if $0.condition(signal) {
-        $0.continuation.resume(returning: signal)
-        return true
-      }
-      return false
-    }
+    multicaster.cast(signal)
   }
 
   /// Send an error to all waiting caller.
   /// - Parameter error: An error.
   public func send(error: Error) {
-    continuations.removeAll {
-      $0.continuation.resume(throwing: error)
-      return true
-    }
+    multicaster.cast(error: error)
   }
 
   /// Invalidate current stream and remove all waits.
   /// - Important: This stream won't ge deinit when there is any wait in the stream. So invalid when you
   ///              want to release a stream or add `invalid()` in the owner's `deinit`.
   public func invalid() {
-    continuations.removeAll {
-      $0.continuation.resume(throwing: SignalError.closed)
-      return true
-    }
+    multicaster.cast(error: SignalError.closed)
   }
 
   deinit {
-    continuations.forEach { $0.continuation.resume(throwing: SignalError.closed) }
+    invalid()
   }
 }
 
