@@ -33,7 +33,7 @@ public class UnsubscribeToken {
 
 /// Multicast values to many observers, observers can await values over time.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public class AsyncThrowingMulticast<T>: Unsubscribable {
+public class AsyncThrowingMulticast<T>: Unsubscribable, @unchecked Sendable {
 
   typealias Subscriber = (T) -> Void
 
@@ -136,7 +136,7 @@ public class AsyncThrowingMulticast<T>: Unsubscribable {
 
 /// Multicast values to many observers, observers can await values over time.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public class AsyncMulticast<T>: Unsubscribable {
+public class AsyncMulticast<T>: Unsubscribable, @unchecked Sendable {
 
   typealias Subscriber = (T) -> Void
 
@@ -149,6 +149,7 @@ public class AsyncMulticast<T>: Unsubscribable {
   public private(set) var buffer: [T] = []
 
   public init(bufferSize: Int = 1) {
+    assert(bufferSize >= 1, "bufferSize must be greater than or equal to 1")
     self.bufferSize = bufferSize
   }
 
@@ -280,7 +281,7 @@ extension AsyncThrowingStream {
 
 /// For the feature like `Property<T>` in `ReactiveSwift`
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public class AsyncProperty<T> : AsyncSequence {
+public class AsyncProperty<T> : AsyncSequence, @unchecked Sendable {
 
   public typealias AsyncIterator = AsyncStream<T>.AsyncIterator
   public typealias Element = T
