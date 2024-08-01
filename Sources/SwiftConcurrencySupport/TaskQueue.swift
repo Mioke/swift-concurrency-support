@@ -12,7 +12,7 @@ public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Resu
 
 /// Run tasks one by one, FIFO.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-final public class TaskQueue<Element> : @unchecked Sendable {
+final public class TaskQueue<Element>: @unchecked Sendable {
 
   /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
   public var metricsConfiguration: TaskQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
@@ -24,6 +24,7 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   @ThreadSafe
   private var array: [TaskItem] = []
 
+  let metricsLock = UnfairLock()
   private var metrics: [UUID: TaskQueue.Metrics] = [:]
   private var metricsCacheIndex: [UUID] = []
 
@@ -45,7 +46,7 @@ final public class TaskQueue<Element> : @unchecked Sendable {
   }
 
   /// The initializer of `TaskQueue`.
-  public init() { }
+  public init() {}
 
   /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
   /// - Parameters:
@@ -193,26 +194,28 @@ extension TaskQueue {
   /// - Parameter id: The task's id.
   /// - Returns: The metrics of the task if there is any in the cache, otherwise `nil`.
   public func retreiveTaskMetrics(id: UUID) -> Metrics? {
-    defer {
-      _array.write { _ in
-        remove(metricsID: id)
-      }
+    metricsLock.around {
+      let m = metrics[id]
+      _remove(metricsID: id)
+      return m
     }
-    return metrics[id]
   }
 
   func add(metrics: Metrics) {
     guard case .enabled(let metricsCacheSize) = metricsConfiguration else { return }
-    self.metrics[metrics.id] = metrics
-    metricsCacheIndex.append(metrics.id)
+    metricsLock.around {
+      self.metrics[metrics.id] = metrics
+      metricsCacheIndex.append(metrics.id)
 
-    if metricsCacheIndex.count > metricsCacheSize {
-      let oldest = metricsCacheIndex.removeFirst()
-      self.metrics.removeValue(forKey: oldest)
+      if metricsCacheIndex.count > metricsCacheSize {
+        let oldest = metricsCacheIndex.removeFirst()
+        self.metrics.removeValue(forKey: oldest)
+      }
     }
   }
 
-  func remove(metricsID: UUID) {
+  // No protect
+  func _remove(metricsID: UUID) {
     self.metrics.removeValue(forKey: metricsID)
     metricsCacheIndex.removeAll { $0 == metricsID }
   }
@@ -230,17 +233,21 @@ extension TaskQueue {
   func markMetricsAsEnd(id: UUID) {
     modifyMetrics(id: id) { $0.endExecutionTime = CFAbsoluteTimeGetCurrent() }
   }
-  
+
   func modifyMetrics(id: UUID, modification: (inout Metrics) -> Void) {
     guard metricsConfiguration != .disabled else { return }
-    guard var metr = metrics[id] else { return }
-    modification(&metr)
-    metrics[id] = metr
+    metricsLock.around {
+      guard var metr = metrics[id] else { return }
+      modification(&metr)
+      metrics[id] = metr
+    }
   }
 
   func resetMetrics() {
-    metrics.removeAll()
-    metricsCacheIndex.removeAll()
+    metricsLock.around {
+      metrics.removeAll()
+      metricsCacheIndex.removeAll()
+    }
   }
 }
 

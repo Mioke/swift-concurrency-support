@@ -10,11 +10,11 @@ import Foundation
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 public typealias ThrowingTaskPriorityQueue<Value, E: Swift.Error> = TaskPriorityQueue<Swift.Result<Value, E>>
 
-/// Run tasks one by one, the tasks will be executed in the order of priority, the tasks with the same priority 
+/// Run tasks one by one, the tasks will be executed in the order of priority, the tasks with the same priority
 /// will be executed in the order of enqueuing.
 /// - Important: Don't enqueue a new task inside another task, it will cause a deadlock.
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-final public class TaskPriorityQueue<Element> : @unchecked Sendable {
+final public class TaskPriorityQueue<Element>: @unchecked Sendable {
 
   /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
   public var metricsConfiguration: TaskPriorityQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
@@ -26,6 +26,7 @@ final public class TaskPriorityQueue<Element> : @unchecked Sendable {
   @ThreadSafe
   private var array: PriorityQueue<TaskItem> = .init()
 
+  let metricsLock = UnfairLock()
   private var metrics: [UUID: TaskPriorityQueue.Metrics] = [:]
   private var metricsCacheIndex: [UUID] = []
 
@@ -47,7 +48,7 @@ final public class TaskPriorityQueue<Element> : @unchecked Sendable {
   }
 
   /// Intialize a `TaskPriorityQueue`.
-  public init() { }
+  public init() {}
 
   /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
   /// - Parameters:
@@ -206,26 +207,28 @@ extension TaskPriorityQueue {
   /// - Parameter id: The task's id.
   /// - Returns: The metrics of the task if there is any in the cache, otherwise `nil`.
   public func retreiveTaskMetrics(id: UUID) -> Metrics? {
-    defer {
-      _array.write { _ in
-        remove(metricsID: id)
-      }
+    metricsLock.around {
+      let m = metrics[id]
+      _remove(metricsID: id)
+      return m
     }
-    return metrics[id]
   }
 
   func add(metrics: Metrics) {
     guard case .enabled(let metricsCacheSize) = metricsConfiguration else { return }
-    self.metrics[metrics.id] = metrics
-    metricsCacheIndex.append(metrics.id)
+    metricsLock.around {
+      self.metrics[metrics.id] = metrics
+      metricsCacheIndex.append(metrics.id)
 
-    if metricsCacheIndex.count > metricsCacheSize {
-      let oldest = metricsCacheIndex.removeFirst()
-      self.metrics.removeValue(forKey: oldest)
+      if metricsCacheIndex.count > metricsCacheSize {
+        let oldest = metricsCacheIndex.removeFirst()
+        self.metrics.removeValue(forKey: oldest)
+      }
     }
   }
 
-  func remove(metricsID: UUID) {
+  // No protect
+  func _remove(metricsID: UUID) {
     self.metrics.removeValue(forKey: metricsID)
     metricsCacheIndex.removeAll { $0 == metricsID }
   }
@@ -246,14 +249,18 @@ extension TaskPriorityQueue {
 
   func modifyMetrics(id: UUID, modification: (inout Metrics) -> Void) {
     guard metricsConfiguration != .disabled else { return }
-    guard var metr = metrics[id] else { return }
-    modification(&metr)
-    metrics[id] = metr
+    metricsLock.around {
+      guard var metr = metrics[id] else { return }
+      modification(&metr)
+      metrics[id] = metr
+    }
   }
 
   func resetMetrics() {
-    metrics.removeAll()
-    metricsCacheIndex.removeAll()
+    metricsLock.around {
+      metrics.removeAll()
+      metricsCacheIndex.removeAll()
+    }
   }
 }
 
