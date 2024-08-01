@@ -57,7 +57,7 @@ class ConcurrencySupportTestCases: XCTestCase {
       token.unsubscribe()
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 2)
   }
 
   @available(iOS 16.0, *)
@@ -418,17 +418,17 @@ class TimeoutTestCases: XCTestCase {
     }
 
     Task {
-      try await Task.sleep(for: .seconds(0.2))
+      try await Task.sleep(for: .seconds(0.1))
       print("# cancelling")
       task.cancel()
     }
 
     do {
-      _ = try await task.value(timeout: .seconds(0.5)) {
+      _ = try await task.value(timeout: .seconds(0.2)) {
         print("on timeout")
       }
       print("# value")
-
+      XCTFail()
     } catch {
       print("###", error, await task.result)
 
@@ -454,7 +454,7 @@ class TimeoutTestCases: XCTestCase {
     }
 
     do {
-      _ = try await task.value(timeout: .seconds(0.5)) {
+      _ = try await task.value(timeout: .seconds(0.1)) {
         print("on timeout")
       }
       print("# value")
@@ -530,22 +530,22 @@ class TaskQueueTestCases: XCTestCase {
 
     async let result1 = queue.task {
       print("run 1")
-      return getCounts()
+      return getCounts() // 2
     }
     async let result2 = queue.task {
       print("run 2")
-      return getCounts()
+      return getCounts() // 3
     }
 
     //        print(await result1, await result2)
 
     let result3 = await queue.task {
       print("run 3")
-      return getCounts()
+      return getCounts() // 1
     }
     let result4 = await queue.task {
       print("run 4")
-      return getCounts()
+      return getCounts() // 4
     }
 
     print(result3, result4)
@@ -606,7 +606,7 @@ class TaskQueueTestCases: XCTestCase {
     Task {
       let result = await self.queue?.task {
         do {
-          try await Task.sleep(for: .seconds(0.5))
+          try await Task.sleep(for: .seconds(0.2))
         } catch {
           print("error", error)
         }
@@ -670,7 +670,7 @@ class TaskQueueTestCases: XCTestCase {
 
     if let queue = self.queue {
       queue.addTask {
-        try! await Task.sleep(for: .seconds(0.5))
+        try! await Task.sleep(for: .seconds(0.2))
         return 1
       } onFinished: { result in
         do {
