@@ -13,8 +13,8 @@ import Foundation
 /// - Note: Wish to make it like: `AsyncOperation<Success, Failure>` but the initial closure throws an anonymous error
 /// type
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public struct AsyncOperation<Success> {
-  public typealias Operation = () async throws -> Success
+public struct AsyncOperation<Success>: Sendable {
+  public typealias Operation = @Sendable () async throws -> Success
 
   let operation: Operation
 
@@ -219,7 +219,7 @@ extension AsyncOperation {
     }
   }
 
-  /// Check the operation after a given time. If the operation does not finish in the given time, it will run the 
+  /// Check the operation after a given time. If the operation does not finish in the given time, it will run the
   /// handler.
   /// - Parameters:
   ///   - after: The check duration, unit is second.
