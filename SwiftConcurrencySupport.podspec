@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
     Additional functionalities for Swift concurrency.
   DESC
 
-  s.homepage = "https://github.com/Klein/SwiftConcurrencySupport"
+  s.homepage = "https://github.com/mioke/swift-concurrency-support"
   s.license = {type: "MIT", file: "LICENSE"}
   s.author = {"Klein" => "mioke0428@gmail.com"}
   s.source = {git: "https://github.com/mioke/swift-concurrency-support.git", tag: s.version.to_s}

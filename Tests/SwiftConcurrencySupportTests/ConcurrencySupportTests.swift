@@ -140,7 +140,7 @@ class ConcurrencySupportTestCases: XCTestCase {
     let property: AsyncProperty<Int> = .init(initialValue: 1)
     let expect = XCTestExpectation()
     let driver = AsyncStream<Int>.makeStream()
-    property.drive(by: driver.stream)
+    property.driven(by: driver.stream)
     let (stream, token) = property.subscribe()
 
     Task {
@@ -159,9 +159,9 @@ class ConcurrencySupportTestCases: XCTestCase {
         driver.continuation.yield(value)
       }
       // TODO: - to figure out why ?
-      // This sleep is neccessary to make sure all the yielded values are consumed in Task 1, if don't, the awaiting 
+      // This sleep is neccessary to make sure all the yielded values are consumed in Task 1, if don't, the awaiting
       // in Task 1 will only receive partial values.
-        try await Task.sleep(for: .seconds(0.1))
+      try await Task.sleep(for: .seconds(0.1))
       driver.continuation.finish()
       token.unsubscribe()
     }

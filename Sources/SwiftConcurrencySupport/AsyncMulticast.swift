@@ -321,7 +321,7 @@ final public class AsyncProperty<T>: AsyncSequence {
 
   /// Drive the changes of this property by a AsyncSequence.
   /// - Parameter sequence: The sequence to drive this property.
-  public func drive<S: AsyncSequence>(by sequence: S) where S.Element == T {
+  public func driven<S: AsyncSequence>(by sequence: S) where S.Element == T {
     Task {
       for try await element in sequence {
         update(element)
