@@ -139,8 +139,8 @@ class ConcurrencySupportTestCases: XCTestCase {
   func testAsyncPropertyDriven() async throws {
     let property: AsyncProperty<Int> = .init(initialValue: 1)
     let expect = XCTestExpectation()
-    let driveStream = AsyncStream<Int>.makeStream()
-    property.drive(by: driveStream.stream)
+    let driver = AsyncStream<Int>.makeStream()
+    property.drive(by: driver.stream)
     let (stream, token) = property.subscribe()
 
     Task {
@@ -149,17 +149,20 @@ class ConcurrencySupportTestCases: XCTestCase {
       for await value in stream {
         results.append(value)
       }
+      XCTAssert(property.value == 4)
       XCTAssert(results == [0, 1, 2, 3, 4])
       expect.fulfill()
     }
     await Task.yield()
     Task {
-      try await Task.sleep(for: .seconds(0.1))
-
       for value in 0..<5 {
-        driveStream.continuation.yield(value)
+        driver.continuation.yield(value)
       }
-      driveStream.continuation.finish()
+      // TODO: - to figure out why ?
+      // This sleep is neccessary to make sure all the yielded values are consumed in Task 1, if don't, the awaiting 
+      // in Task 1 will only receive partial values.
+        try await Task.sleep(for: .seconds(0.1))
+      driver.continuation.finish()
       token.unsubscribe()
     }
     await fulfillment(of: [expect], timeout: 1)
