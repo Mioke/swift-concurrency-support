@@ -76,6 +76,35 @@ Task {
 }
 ```
 
+* `AsyncProperty`: Similar to `Property<T>` in ReactiveSwift, can subscribe its changes overtime. It also is an `AsyncSequence` so you can transform it with `AsyncSequence`'s operators. It can be driven by other `AsyncSequence` too.
+
+```swift
+let property: AsyncProperty<Int> = .init(initialValue: 1)
+property.update(2)
+
+let driver = AsyncStream<Int>.makeStream()
+property.driven(by: driver.stream)
+let (stream, token) = property.subscribe()
+
+Task {
+  for i in 0...10 {
+    driver.continuation.yeild(value)
+  }
+}
+
+Task {
+  for await changes in stream {
+    print("Got \(changes)")
+    break
+  }
+  let transformed = property.map { $0 * 2 }
+  let next = await transfromed.first { $0 > 2 }
+  XCTAssert(next == 4)
+
+  token.unsubscribe()
+}
+```
+
 * `AsyncThrowingSignalStream`: Please see the code detail.
 
 ```swift
