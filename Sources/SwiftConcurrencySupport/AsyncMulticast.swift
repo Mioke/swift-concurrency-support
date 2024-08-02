@@ -308,12 +308,25 @@ final public class AsyncProperty<T>: AsyncSequence {
     self.initialValue = initialValue
   }
 
+  /// The current value of this property.
   public var value: T {
     return multicaster.lastElement() ?? initialValue
   }
 
+  /// Update the value of this property.
+  /// - Parameter newValue: The new value.
   public func update(_ newValue: T) {
     multicaster.cast(newValue)
+  }
+
+  /// Drive the changes of this property by a AsyncSequence.
+  /// - Parameter sequence: The sequence to drive this property.
+  public func drive<S: AsyncSequence>(by sequence: S) where S.Element == T {
+    Task {
+      for try await element in sequence {
+        update(element)
+      }
+    }
   }
 
   /// Subscribing the changes of this property.

@@ -136,6 +136,36 @@ class ConcurrencySupportTestCases: XCTestCase {
   }
 
   @available(iOS 16.0, *)
+  func testAsyncPropertyDriven() async throws {
+    let property: AsyncProperty<Int> = .init(initialValue: 1)
+    let expect = XCTestExpectation()
+    let driveStream = AsyncStream<Int>.makeStream()
+    property.drive(by: driveStream.stream)
+    let (stream, token) = property.subscribe()
+
+    Task {
+      // observe
+      var results = [Int]()
+      for await value in stream {
+        results.append(value)
+      }
+      XCTAssert(results == [0, 1, 2, 3, 4])
+      expect.fulfill()
+    }
+    await Task.yield()
+    Task {
+      try await Task.sleep(for: .seconds(0.1))
+
+      for value in 0..<5 {
+        driveStream.continuation.yield(value)
+      }
+      driveStream.continuation.finish()
+      token.unsubscribe()
+    }
+    await fulfillment(of: [expect], timeout: 1)
+  }
+
+  @available(iOS 16.0, *)
   func testAsyncThrowingSignalStream1() async throws {
     let stream: AsyncThrowingSignalStream<Int> = .init()
 
@@ -605,22 +635,22 @@ class TaskQueueTestCases: XCTestCase {
 
     async let result1 = queue.task {
       print("run 1")
-      return getCounts() // 2
+      return getCounts()  // 2
     }
     async let result2 = queue.task {
       print("run 2")
-      return getCounts() // 3
+      return getCounts()  // 3
     }
 
     //        print(await result1, await result2)
 
     let result3 = await queue.task {
       print("run 3")
-      return getCounts() // 1
+      return getCounts()  // 1
     }
     let result4 = await queue.task {
       print("run 4")
-      return getCounts() // 4
+      return getCounts()  // 4
     }
 
     print(result3, result4)
