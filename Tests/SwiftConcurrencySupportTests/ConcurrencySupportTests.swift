@@ -20,6 +20,7 @@ enum InternalError: Error, Equatable {
   case one
 }
 
+@available(iOS 16.0, *)
 class ConcurrencySupportTestCases: XCTestCase {
 
   var property: AsyncProperty<Int> = .init(initialValue: -1)
@@ -27,6 +28,38 @@ class ConcurrencySupportTestCases: XCTestCase {
   override func setUp() async throws {
 
   }
+
+  // func testMultipleAwaitingStream() async throws {
+  //   let stream = AsyncStream<Int>.makeStream()
+  //   let expect = XCTestExpectation()
+
+  //   Task {
+  //     var iterator = stream.stream.makeAsyncIterator()
+  //     while let value = await iterator.next() {
+  //       print("Task 1 get value: \(value)")
+  //     }
+  //   }
+
+  //   Task {
+  //     var iterator = stream.stream.makeAsyncIterator()
+  //     while let value = await iterator.next() {
+  //       print("Task 2 get value: \(value)")
+  //       XCTFail()
+  //     }
+
+  //     try await Task.sleep(for: .seconds(0.2))
+  //     expect.fulfill()
+  //   }
+
+  //   Task {
+  //     try await Task.sleep(for: .seconds(0.2))
+  //     stream.continuation.yield(1)
+  //     try await Task.sleep(for: .seconds(0.2))
+  //     stream.continuation.finish()
+  //   }
+
+  //   await fulfillment(of: [expect], timeout: 1)
+  // }
 
   @available(iOS 16.0, *)
   func testAsyncProperty() async throws {
@@ -1310,5 +1343,58 @@ class AsyncOperationQueueTestCases: XCTestCase {
     }
     // 11 tasks, 2 concurrent at a time, total cost must be less than 1.1s
     await fulfillment(of: [expect], timeout: 0.8)
+  }
+}
+
+@available(iOS 16, *)
+class AsyncStartWithSequenceTestCases: XCTestCase {
+  func testStartWithSequence() async throws {
+    let make = AsyncThrowingStream<Int, Error>.makeStream()
+    let prefixedSequence = make.stream.start(with: 1)
+
+    let expect = XCTestExpectation()
+
+    Task {
+      var results: [Int] = []
+      for try await value in prefixedSequence {
+        results.append(value)
+      }
+      XCTAssert(results == [1, 2, 3, 4])
+      expect.fulfill()
+    }
+
+    Task {
+      for value in 2...4 {
+        make.continuation.yield(value)
+      }
+      make.continuation.finish()
+    }
+
+    await fulfillment(of: [expect], timeout: 1)
+  }
+
+  func testStartWithNonThrowingSequence() async throws {
+    let make = AsyncStream<Int>.makeStream()
+    let prefixedSequence = make.stream.start(with: 1)
+
+    let expect = XCTestExpectation()
+
+    Task {
+      var results: [Int] = []
+      for await value in prefixedSequence {
+        results.append(value)
+      }
+      XCTAssert(results == [1, 2, 3, 4])
+      expect.fulfill()
+    }
+
+    Task {
+      for value in 2...4 {
+        make.continuation.yield(value)
+      }
+      make.continuation.finish()
+    }
+
+    await fulfillment(of: [expect], timeout: 1)
   }
 }
