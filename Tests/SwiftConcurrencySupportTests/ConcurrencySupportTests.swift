@@ -139,6 +139,7 @@ class ConcurrencySupportTestCases: XCTestCase {
       }
       print(results)
       XCTAssert(results == [0, 1, 2, 3, 4])
+      expect.fulfill()
     }
 
     await Task.yield()
@@ -160,10 +161,9 @@ class ConcurrencySupportTestCases: XCTestCase {
 
     Task {
       for value in 0..<6 {
-        property.update(value)
         try await Task.sleep(for: .seconds(0.01))
+        property.update(value)
       }
-      expect.fulfill()
     }
     await fulfillment(of: [expect], timeout: 1)
   }
