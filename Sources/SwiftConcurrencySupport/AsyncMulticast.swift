@@ -92,14 +92,8 @@ public class AsyncThrowingMulticast<T>: Unsubscribable, @unchecked Sendable {
   /// - Parameter subscriber: Who is unsubscribing.
   func unsubscribe(with token: UnsubscribeToken) {
     let id = ObjectIdentifier(token)
-    let values = _subscribers.write {
-      s -> (Subscriber, AsyncThrowingStream<T, Error>.Continuation)? in
-      guard let values = s[id] else { return nil }
-      s[id] = nil
-      return values
-    }
-    if let values {
-      values.1.finish()
+    if let subscriber = _subscribers.read({ $0[id] }) {
+      subscriber.1.finish()
     }
   }
 
@@ -126,11 +120,16 @@ public class AsyncThrowingMulticast<T>: Unsubscribable, @unchecked Sendable {
     }
   }
 
-  deinit {
+  /// Send finish to all subscribers.
+  public func finish() {
     let subs = subscribers
     subs.forEach { (_, sub: ((T) -> Void, AsyncThrowingStream<T, Error>.Continuation)) in
       sub.1.finish()
     }
+  }
+
+  deinit {
+    finish()
   }
 }
 
@@ -195,13 +194,8 @@ public class AsyncMulticast<T>: Unsubscribable, @unchecked Sendable {
   /// - Parameter subscriber: Who is unsubscribing.
   func unsubscribe(with token: UnsubscribeToken) {
     let id = ObjectIdentifier(token)
-    let values = _subscribers.write { s -> (Subscriber, AsyncStream<T>.Continuation)? in
-      guard let values = s[id] else { return nil }
-      s[id] = nil
-      return values
-    }
-    if let values {
-      values.1.finish()
+    if let subscriber = _subscribers.read({ $0[id] }) {
+      subscriber.1.finish()
     }
   }
 
@@ -218,11 +212,16 @@ public class AsyncMulticast<T>: Unsubscribable, @unchecked Sendable {
     }
   }
 
-  deinit {
+  ///  Send finish to all subscribers.
+  public func finish() {
     let subs = subscribers
     subs.forEach { (_, sub: ((T) -> Void, AsyncStream<T>.Continuation)) in
       sub.1.finish()
     }
+  }
+
+  deinit {
+    finish()
   }
 }
 
@@ -232,19 +231,24 @@ extension AsyncStream {
   /// Make a multicaster for this stream. If the task is suspended or released, the multicatser can't receive any
   /// new elements.
   /// - Returns: An observing task and it's multicatster.
-  public func makeMulticaster() -> (task: Task<Void, Error>, multicaster: AsyncMulticast<Element>) {
+  public func makeMulticaster() -> (task: Task<(), Never>, multicaster: AsyncMulticast<Element>) {
     let multicaster = AsyncMulticast<Element>()
-    return (
-      task: .init(operation: { [weak multicaster] in
-        var iterator = self.makeAsyncIterator()
+    let observingTask = Task { [weak multicaster] in
+      var iterator = self.makeAsyncIterator()
+      do {
         while let element = await iterator.next() {
-          multicaster?.cast(element)
+          guard let multicaster else { return }
           try Task.checkCancellation()
-          await Task.yield()
+          multicaster.cast(element)
         }
-      }),
-      multicaster: multicaster
-    )
+        multicaster?.finish()
+      } catch {
+        if error is CancellationError {
+          multicaster?.finish()
+        }
+      }
+    }
+    return (task: observingTask, multicaster: multicaster)
   }
 }
 
@@ -255,25 +259,29 @@ extension AsyncThrowingStream {
   /// receive any new elements.
   /// - Returns: An observing task and it's multicatster.
   public func makeMulticaster() -> (
-    task: Task<Void, Error>, multicaster: AsyncThrowingMulticast<Element>
+    task: Task<Void, Never>, multicaster: AsyncThrowingMulticast<Element>
   ) {
     let multicaster = AsyncThrowingMulticast<Element>()
-    return (
-      task: .init(operation: { [weak multicaster] in
-        var iterator = self.makeAsyncIterator()
-        do {
-          while let element = try await iterator.next() {
-            multicaster?.cast(element)
-            // don't catch this cancellation error.
-            try? Task.checkCancellation()
-            await Task.yield()
+    let observingTask = Task { [weak multicaster] in
+      let copied = self
+      var iterator = copied.makeAsyncIterator()
+      do {
+        while let element = try await iterator.next() {
+          guard let multicaster else { return }
+          do {
+            try Task.checkCancellation()
+          } catch {
+            multicaster.finish()
+            return 
           }
-        } catch {
-          multicaster?.cast(error: error)
+          multicaster.cast(element)
         }
-      }),
-      multicaster: multicaster
-    )
+        multicaster?.finish()
+      } catch {
+        multicaster?.cast(error: error)
+      }
+    }
+    return (task: observingTask, multicaster: multicaster)
   }
 }
 
