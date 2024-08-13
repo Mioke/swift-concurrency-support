@@ -9,31 +9,31 @@ import Darwin
 import Foundation
 import os
 
-public protocol Protectable {
+protocol Protectable {
   func around<T>(_ closure: () -> T) -> T
 }
 
-public final class UnfairLock {
+final class UnfairLock {
   private let _lock: os_unfair_lock_t
 
-  public init() {
+  init() {
     _lock = .allocate(capacity: 1)
     _lock.initialize(to: os_unfair_lock())
   }
 
-  public func lock() {
+  func lock() {
     os_unfair_lock_lock(_lock)
   }
 
-  public func unlock() {
+  func unlock() {
     os_unfair_lock_unlock(_lock)
   }
 
-  public func `try`() -> Bool {
+  func `try`() -> Bool {
     return os_unfair_lock_trylock(_lock)
   }
 
-  public func around<T>(_ closure: () -> T) -> T {
+  func around<T>(_ closure: () -> T) -> T {
     lock()
     defer { unlock() }
     return closure()
@@ -45,36 +45,36 @@ public final class UnfairLock {
   }
 }
 
-public final class RwLock {
+final class RwLock {
 
-  public enum Exception: Swift.Error {
+  enum Exception: Swift.Error {
     case lockFailed(internalStatus: Int32)
   }
 
   private var _lock: pthread_rwlock_t = .init()
 
-  public init() {
+  init() {
     pthread_rwlock_init(&_lock, nil)
   }
 
   @discardableResult
-  public func readLock() -> Bool {
+  func readLock() -> Bool {
     pthread_rwlock_rdlock(&_lock) == 0
   }
 
   @discardableResult
-  public func writeLock() -> Bool {
+  func writeLock() -> Bool {
     pthread_rwlock_wrlock(&_lock) == 0
   }
 
-  public func tryReadLock() throws {
+  func tryReadLock() throws {
     let status = pthread_rwlock_tryrdlock(&_lock)
     if status == EBUSY || status == EINVAL || status == EDEADLK {
       throw RwLock.Exception.lockFailed(internalStatus: status)
     }
   }
 
-  public func tryWriteLock() throws {
+  func tryWriteLock() throws {
     let status = pthread_rwlock_trywrlock(&_lock)
     if status == EBUSY || status == EINVAL || status == EDEADLK {
       throw RwLock.Exception.lockFailed(internalStatus: status)
@@ -82,19 +82,19 @@ public final class RwLock {
   }
 
   @discardableResult
-  public func unlock() -> Bool {
+  func unlock() -> Bool {
     let status = pthread_rwlock_unlock(&_lock)
     // Error: EINVAL (not initialized), EPERM (doesn't own the lock)
     return status == 0
   }
 
-  public func write<T>(_ closure: () throws -> T) rethrows -> T {
+  func write<T>(_ closure: () throws -> T) rethrows -> T {
     let rst = writeLock()
     defer { if rst { unlock() } }
     return try closure()
   }
 
-  public func read<T>(_ closure: () throws -> T) rethrows -> T {
+  func read<T>(_ closure: () throws -> T) rethrows -> T {
     let rst = readLock()
     defer { if rst { unlock() } }
     return try closure()
@@ -122,11 +122,11 @@ public final class RwLock {
 /// The result could be randomly different. So use `read(_:)` or `write(_:)` functions to ensure all the logic is protected.
 @propertyWrapper
 @dynamicMemberLookup
-final public class ThreadSafe<T> {
+final class ThreadSafe<T> {
   private var value: T
   private let _lock: RwLock = .init()
 
-  public var wrappedValue: T {
+  var wrappedValue: T {
     get {
       return _lock.read { return value }
     }
@@ -135,7 +135,7 @@ final public class ThreadSafe<T> {
     }
   }
 
-  public init(wrappedValue: T) {
+  init(wrappedValue: T) {
     self.value = wrappedValue
   }
 
@@ -160,23 +160,23 @@ final public class ThreadSafe<T> {
   }
 }
 
-final public class Atomic<T> {
+final class Atomic<T> {
   private var _value: T
   private let _lock: RwLock = .init()
 
-  public init(value: T) {
+  init(value: T) {
     self._value = value
   }
 
   @discardableResult
-  public func modify<Result>(_ action: (inout T) -> Result) -> Result {
+  func modify<Result>(_ action: (inout T) -> Result) -> Result {
     _lock.write {
       action(&_value)
     }
   }
 
   @discardableResult
-  public func swap(_ newValue: T) -> T {
+  func swap(_ newValue: T) -> T {
     modify { value in
       let oldValue = value
       value = newValue
@@ -184,14 +184,14 @@ final public class Atomic<T> {
     }
   }
 
-  public var value: T {
+  var value: T {
     _lock.read {
       let copy = _value
       return copy
     }
   }
 
-  public var unsafeValue: T {
+  var unsafeValue: T {
     let copy = _value
     return copy
   }
@@ -201,7 +201,7 @@ extension RwLock: Protectable {
   /// Default is using the write lock.
   /// - Parameter closure: Protected operation.
   /// - Returns: The result of the operation.
-  public func around<T>(_ closure: () -> T) -> T {
+  func around<T>(_ closure: () -> T) -> T {
     writeLock()
     defer { unlock() }
     return closure()
