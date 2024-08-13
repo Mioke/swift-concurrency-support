@@ -470,7 +470,7 @@ class ConcurrencySupportTestCases: XCTestCase {
       for try await item in stream {
         results.append(item)
       }
-      XCTAssert(results == multicaster.buffer)
+      XCTAssert(results == multicaster.buffer())
       print(multicaster.lastElement() as Any)
       expect.fulfill()
     }

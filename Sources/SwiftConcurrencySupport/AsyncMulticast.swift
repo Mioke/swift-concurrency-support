@@ -44,14 +44,32 @@ public class AsyncThrowingMulticast<T>: Unsubscribable, @unchecked Sendable {
   public let bufferSize: Int
 
   @ThreadSafe
-  public private(set) var buffer: [T] = []
+  internal private(set) var buffer: [T] = []
 
+  /// Create a throwing multicaster.
+  /// - Parameter bufferSize: The buffer size of the multicaster.
   public init(bufferSize: Int = 1) {
+    assert(bufferSize >= 0, "bufferSize must be greater than or equal to 0")
     self.bufferSize = bufferSize
   }
 
+  /// Get the last element of the multicaster's buffer
+  /// - Returns: The last element of the multicaster's buffer if exists.
   public func lastElement() -> T? {
     return _buffer.read { $0.last }
+  }
+
+  /// Get the buffer of the multicaster with the given count.
+  /// - Parameter count: The count of elents to get.
+  /// - Returns: The buffer of the multicaster.
+  public func buffer(count: Int? = nil) -> [T] {
+    return _buffer.read {
+      if let count {
+        $0.suffix(count)
+      } else {
+        $0
+      }
+    }
   }
 
   /// Subscribe from this multicaster.
@@ -145,15 +163,28 @@ public class AsyncMulticast<T>: Unsubscribable, @unchecked Sendable {
   public let bufferSize: Int
 
   @ThreadSafe
-  public private(set) var buffer: [T] = []
+  internal private(set) var buffer: [T] = []
 
   public init(bufferSize: Int = 1) {
-    assert(bufferSize >= 1, "bufferSize must be greater than or equal to 1")
+    assert(bufferSize >= 0, "bufferSize must be greater than or equal to 0")
     self.bufferSize = bufferSize
   }
 
   public func lastElement() -> T? {
     return _buffer.read { $0.last }
+  }
+
+  /// Get the buffer of the multicaster with the given count.
+  /// - Parameter count: The count of elents to get.
+  /// - Returns: The buffer of the multicaster.
+  public func buffer(count: Int? = nil) -> [T] {
+    return _buffer.read {
+      if let count {
+        $0.suffix(count)
+      } else {
+        $0
+      }
+    }
   }
 
   /// Subscribe from this multicaster.
@@ -272,7 +303,7 @@ extension AsyncThrowingStream {
             try Task.checkCancellation()
           } catch {
             multicaster.finish()
-            return 
+            return
           }
           multicaster.cast(element)
         }
