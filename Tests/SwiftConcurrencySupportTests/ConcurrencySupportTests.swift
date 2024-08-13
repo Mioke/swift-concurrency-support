@@ -571,7 +571,7 @@ class TimeoutTestCases: XCTestCase {
       print("# value")
       XCTFail()
     } catch {
-      print("###", error, await task.result)
+      print(#function, error, await task.result)
 
       if error is CancellationError {
         XCTAssert(true)
