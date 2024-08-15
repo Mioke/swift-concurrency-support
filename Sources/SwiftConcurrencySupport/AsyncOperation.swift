@@ -269,12 +269,6 @@ extension AsyncOperation {
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
 final public class AsyncOperationQueue {
 
-  /// The operation's state.
-  public enum State: Equatable {
-    case running(concurrentCount: Int)
-    case waiting
-  }
-
   /// The operation's concurrency mode.
   public enum Mode {
     case serial
@@ -283,38 +277,31 @@ final public class AsyncOperationQueue {
 
   /// Concurrency mode.
   public private(set) var mode: Mode
-  /// Current state.
-  public private(set) var state: AsyncOperationQueue.State = .waiting
 
-  /// The queue of operations. The operations will be executed in the order of enqueue. The `id` is used to identify the
-  /// operation in the queue, only used for debugging purpose.
-  @ThreadSafe
-  var queue: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
+  /// The semaphore to limit the concurrency of the operation queue.
+  let semaphore: SemaphoreActor
 
   /// Intialization. Not suggest to use `.concurrent(limit: 1)` for serial execution, the `.serial` mode will have
   /// better performance.
   /// - Parameter mode: The concurrency mode of this operation queue, default is `.serial`
   public init(mode: Mode = .serial) {
     self.mode = mode
+    switch mode {
+    case .serial:
+      semaphore = .init(value: 1)
+    case .concurrent(let limit):
+      semaphore = .init(value: limit)
+    }
   }
 
   /// Enqueue an operation and wait for its result.
   /// - Parameter operation: The operation will be enqueued.
   /// - Returns: The operation's result.
   public func operation<S>(_ operation: AsyncOperation<S>) async throws -> S {
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) -> Void in
-      _queue.write { q in
-        q.append((id: UUID(), continuation: continuation))
-        processNextIfNeeded(queue: &q)
-      }
-    }
-    defer {
-      _queue.write { q in
-        handleCompletion()
-        processNextIfNeeded(queue: &q)
-      }
-    }
-    return try await operation.start()
+    await semaphore.wait()
+    let result = try await operation.start()
+    await semaphore.signal()
+    return result
   }
 
   /// Enqueue an operation and wait for its result.
@@ -325,55 +312,6 @@ final public class AsyncOperationQueue {
     return try await operation(asyncOperation)
   }
 
-  // MARK: - Internal functions.
-
-  func processNextIfNeeded(
-    queue: inout [(id: UUID, continuation: CheckedContinuation<Void, Never>)]
-  ) {
-    if case .serial = mode {
-      processSerial(queue: &queue)
-    } else {
-      processConcurrent(queue: &queue)
-    }
-  }
-
-  func processSerial(queue: inout [(id: UUID, continuation: CheckedContinuation<Void, Never>)]) {
-    guard case .waiting = state else { return }
-    guard let head = queue.isEmpty ? nil : queue.removeFirst() else { return }
-    state = .running(concurrentCount: 1)
-    head.continuation.resume(returning: ())
-  }
-
-  func processConcurrent(queue: inout [(id: UUID, continuation: CheckedContinuation<Void, Never>)]) {
-    guard case .concurrent(let limit) = mode else {
-      return
-    }
-    let concurrentCount = state.runningCount() ?? 0
-    if state != .waiting && concurrentCount >= limit {
-      return
-    }
-    guard let head = queue.isEmpty ? nil : queue.removeFirst() else { return }
-    state = .running(concurrentCount: concurrentCount + 1)
-    head.continuation.resume(returning: ())
-  }
-
-  func handleCompletion() {
-    if case .serial = mode {
-      state = .waiting
-    } else if case .running(let concurrentCount) = state {
-      state = (concurrentCount - 1 > 0) ? .running(concurrentCount: concurrentCount - 1) : .waiting
-    }
-  }
-}
-
-@available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-extension AsyncOperationQueue.State {
-  func runningCount() -> Int? {
-    guard case .running(let concurrentCount) = self else {
-      return nil
-    }
-    return concurrentCount
-  }
 }
 
 // MARK: - AsyncOperation Metrics

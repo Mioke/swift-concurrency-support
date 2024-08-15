@@ -11,7 +11,7 @@ import os
 class SemaphoreTestCases: XCTestCase {
 
   func testLogic() async throws {
-    let semaphore = SwiftConcurrencySupport.Semaphore(value: 0)
+    let semaphore = SemaphoreActor(value: 0)
     let expect = XCTestExpectation()
 
     Task {
@@ -33,7 +33,7 @@ class SemaphoreTestCases: XCTestCase {
   }
 
   func testHeavyLoad() async throws {
-    let semaphore = SwiftConcurrencySupport.Semaphore(value: 10)
+    let semaphore = SemaphoreActor(value: 10)
     
     @Sendable
     func run() async throws {

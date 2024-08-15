@@ -6,15 +6,15 @@
 //  Copyright © 2024 Klein. All rights reserved.
 //
 
-/// A Semaphore is a synchronization primitive that can be used to control access to a shared resource. 
-public actor Semaphore {
+/// A SemaphoreActor is a synchronization primitive that can be used to control access to a shared resource. 
+public actor SemaphoreActor {
   let value: Int
   var current: Int
   var continuations: [UnsafeContinuation<Void, Never>] = []
 
-  /// Creates a new `Semaphore` with the given value.
+  /// Creates a new `SemaphoreActor` with the given value.
   /// - Parameter value: The initial value of the semaphore.
-  public init(value: Int = 0) {
+  public init(value: Int = 1) {
     self.value = value
     self.current = value
   }
