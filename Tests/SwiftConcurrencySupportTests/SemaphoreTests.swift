@@ -34,7 +34,6 @@ class SemaphoreTestCases: XCTestCase {
 
   func testHeavyLoad() async throws {
     let semaphore = SemaphoreActor(value: 10)
-    
     @Sendable
     func run() async throws {
       await semaphore.wait()
@@ -43,23 +42,17 @@ class SemaphoreTestCases: XCTestCase {
     }
 
     let expect1 = XCTestExpectation()
-    let expect2 = XCTestExpectation()
 
-    Task {
-      for _ in 0...10 {
+    for num in 0...20 {
+      Task {
         try await run()
+        if num == 20 {
+          expect1.fulfill()
+        }
       }
-      expect1.fulfill()
     }
 
-    Task {
-      for _ in 0...10 {
-        try await run()
-      }
-      expect2.fulfill()
-    }
-
-    await fulfillment(of: [expect1, expect2], timeout: 15)
+    await fulfillment(of: [expect1], timeout: 0.2)
   }
 
 }
