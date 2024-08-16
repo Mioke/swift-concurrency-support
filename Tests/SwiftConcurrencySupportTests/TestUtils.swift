@@ -10,7 +10,7 @@ import RxCocoa
 import RxSwift
 
 #if canImport(SwiftConcurrencySupport)
-  @testable import SwiftConcurrencySupport
+@testable import SwiftConcurrencySupport
 #endif
 
 extension Observable {

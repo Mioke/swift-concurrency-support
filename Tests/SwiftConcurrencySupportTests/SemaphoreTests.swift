@@ -5,7 +5,7 @@ import XCTest
 import os
 
 #if canImport(SwiftConcurrencySupport)
-  @testable import SwiftConcurrencySupport
+@testable import SwiftConcurrencySupport
 #endif
 
 class SemaphoreTestCases: XCTestCase {

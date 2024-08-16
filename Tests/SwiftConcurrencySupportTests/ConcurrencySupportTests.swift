@@ -12,7 +12,7 @@ import XCTest
 import os
 
 #if canImport(SwiftConcurrencySupport)
-  import SwiftConcurrencySupport
+import SwiftConcurrencySupport
 #endif
 
 enum InternalError: Error, Equatable {
