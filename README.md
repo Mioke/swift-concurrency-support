@@ -52,6 +52,21 @@ do {
 }
 ```
 
+* `SemaphoreActor`: A semaphore implemented by `actor`, can be used to limit the number of concurrent operations or protect data.
+
+```swift
+let semaphore = SemaphoreActor(value: 0)
+
+Task {
+  await semaphore.wait()
+}
+
+Task {
+  try await Task.sleep(for: .seconds(0.05))
+  await semaphore.signal()
+}
+```
+
 * `AsyncMuticast` : Multicaster for a concurrency context, create an `AsyncStream` and a cancel token for the observer when subscribing from this multicaster.
 
 ```swift
