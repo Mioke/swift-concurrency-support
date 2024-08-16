@@ -558,11 +558,13 @@ class TimeoutTestCases: XCTestCase {
       return "some"
     }
 
-    Task {
+    Task(priority: .high) {
       try await Task.sleep(for: .seconds(0.1))
       print("# cancelling")
       task.cancel()
     }
+
+    await Task.yield()
 
     do {
       _ = try await task.value(timeout: .seconds(0.2)) {
