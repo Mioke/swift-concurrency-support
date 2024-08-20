@@ -27,7 +27,16 @@ pod 'SwiftConcurrencySupport', :git => 'https://github.com/mioke/swift-concurren
 
 ## Functions
 
-* Timeout functions for `Task`.
+### List
+
+- Task timeout
+- Semaphore
+- AsyncMulticast
+- AsyncProperty
+- AsyncThrowingSignalStream
+- TaskQueue and TaskPriorityQueue
+
+### Timeout functions for `Task`
 
 ```swift
 let task = Task<String, any Error> {
@@ -52,7 +61,9 @@ do {
 }
 ```
 
-* `SemaphoreActor`: A semaphore implemented by `actor`, can be used to limit the number of concurrent operations or protect data.
+### `SemaphoreActor`
+
+A semaphore implemented by `actor`, can be used to limit the number of concurrent operations or protect data.
 
 ```swift
 let semaphore = SemaphoreActor(value: 0)
@@ -67,7 +78,9 @@ Task {
 }
 ```
 
-* `AsyncMuticast` : Multicaster for a concurrency context, create an `AsyncStream` and a cancel token for the observer when subscribing from this multicaster.
+### `AsyncMuticast` : Multicaster for a concurrency context
+
+Multicaster for a concurrency context, create an `AsyncStream` and a cancel token for the observer when subscribing from this multicaster.
 
 ```swift
 let (stream, token) = multicaster.subscribe()
@@ -91,7 +104,9 @@ Task {
 }
 ```
 
-* `AsyncProperty`: Similar to `Property<T>` in ReactiveSwift, can subscribe its changes overtime. It also is an `AsyncSequence` so you can transform it with `AsyncSequence`'s operators. It can be driven by other `AsyncSequence` too.
+### `AsyncProperty`: Similar to `Property<T>` in ReactiveSwift
+
+It can subscribe its changes overtime. It also is an `AsyncSequence` so you can transform it with `AsyncSequence`'s operators. It can be driven by other `AsyncSequence` too.
 
 ```swift
 let property: AsyncProperty<Int> = .init(initialValue: 1)
@@ -120,7 +135,9 @@ Task {
 }
 ```
 
-* `AsyncThrowingSignalStream`: Please see the code detail.
+### `AsyncThrowingSignalStream`
+
+(Please see the code detail.)
 
 ```swift
 let stream: AsyncThrowingSignalStream<Int> = .init()
@@ -141,7 +158,7 @@ Task {
 }
 ```
 
-* `TaskQueue`: Run `Task` one by one, have task metrics when task is finished.
+### `TaskQueue`: Run `Task` one by one, have task metrics when task is finished
 
 ```swift
 for index in assuming {
@@ -166,7 +183,12 @@ id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
 
 ## Functional Programming
 
-* `AsyncOperation` : Wrapped async operation, provide basic functional programming unit. Provides `flatMap`, `map`, `combine` and lots of operators to manipulate the operation.
+### Feature List
+
+- AsyncOperation and it's operators
+- AsyncOperationQueue
+
+### `AsyncOperation` : Wrapped async operation, provide basic functional programming unit. Provides `flatMap`, `map`, `combine` and lots of operators to manipulate the operation
 
 ```swift
 let operation1: AsyncOperation<Int> = .init {
@@ -209,7 +231,7 @@ let result1 = await operation1.startWithResult()
 XCTAssert(result1.error() == nil)
 ```
 
-* `AsyncOperation.combine` : Combine multiple `AsyncOperation` into one.
+### `AsyncOperation.combine` : Combine multiple `AsyncOperation` into one
 
 ```swift
 let combined = AsyncOperation.combine([operation1, operation2])
@@ -218,7 +240,7 @@ let result = try await combined.start()
 XCTAssert(result == [1, 3])
 ```
 
-* `AsyncOperation.merge` : Merge multiple `AsyncOperation` into one `AsyncStream`.
+### `AsyncOperation.merge` : Merge multiple `AsyncOperation` into one `AsyncStream`
 
 ```swift
 let mergedStream = AsyncOperation.merge([operation1, operation2])
@@ -232,7 +254,7 @@ while let value = try await iterator.next() {
 XCTAssert(results == [1, 2])
 ```
 
-* `AsyncOperationQueue` : Run `AsyncOperation` in serial or concurrent ways, Please see the code detail.
+### `AsyncOperationQueue` : Run `AsyncOperation` in serial or concurrent ways, Please see the code detail
 
 ```swift
 let queue = AsyncOperationQueue()
@@ -252,4 +274,8 @@ Task {
 }
 ```
 
-* Other supporting features.
+## Other supporting features
+
+- ActorAtomic\<T\>: Locking wrapper implemented by actor.
+- AsyncStartWithSequence: `AsyncSequence` that starts with values.
+- `eraseToStream` and `eraseToThrowingStream`: Convert `AsyncSequence` to `AsyncStream`, preventing the long generics type.
