@@ -25,16 +25,31 @@ pod 'SwiftConcurrencySupport', :git => 'https://github.com/mioke/swift-concurren
 .product(name: "SwiftConcurrencySupport", package: "swift-concurrency-support")
 ```
 
+## Index
+
+- [swift-concurrency-support](#swift-concurrency-support)
+  - [Install](#install)
+    - [Using CocoaPods](#using-cocoapods)
+    - [Using SPM](#using-spm)
+  - [Index](#index)
+  - [Functions](#functions)
+    - [Timeout functions for `Task`](#timeout-functions-for-task)
+    - [`SemaphoreActor`](#semaphoreactor)
+    - [`AsyncMuticast` : Multicaster for a concurrency context](#asyncmuticast--multicaster-for-a-concurrency-context)
+    - [`AsyncProperty`: Similar to `Property<T>` in ReactiveSwift](#asyncproperty-similar-to-propertyt-in-reactiveswift)
+    - [`AsyncThrowingSignalStream`](#asyncthrowingsignalstream)
+    - [`TaskQueue`: Run `Task` one by one, have task metrics when task is finished](#taskqueue-run-task-one-by-one-have-task-metrics-when-task-is-finished)
+  - [Functional Programming](#functional-programming)
+    - [`AsyncOperation` : Wrapped async operation](#asyncoperation--wrapped-async-operation)
+    - [`AsyncOperation.combine` : Combine multiple `AsyncOperation` into one](#asyncoperationcombine--combine-multiple-asyncoperation-into-one)
+    - [`AsyncOperation.merge` : Merge multiple `AsyncOperation` into one `AsyncStream`](#asyncoperationmerge--merge-multiple-asyncoperation-into-one-asyncstream)
+    - [`AsyncOperationQueue` : Run `AsyncOperation` in serial or concurrent ways, Please see the code detail](#asyncoperationqueue--run-asyncoperation-in-serial-or-concurrent-ways-please-see-the-code-detail)
+  - [Other supporting features](#other-supporting-features)
+    - [`ActorAtomic<T>`: Locking wrapper implemented by actor](#actoratomict-locking-wrapper-implemented-by-actor)
+    - [`AsyncStartWithSequence`: AsyncSequence that starts with values](#asyncstartwithsequence-asyncsequence-that-starts-with-values)
+    - [AsyncSequence `eraseToStream()` and `eraseToThrowingStream()`](#asyncsequence-erasetostream-and-erasetothrowingstream)
+
 ## Functions
-
-### List
-
-- Task timeout
-- Semaphore
-- AsyncMulticast
-- AsyncProperty
-- AsyncThrowingSignalStream
-- TaskQueue and TaskPriorityQueue
 
 ### Timeout functions for `Task`
 
@@ -183,12 +198,9 @@ id: 6B1802A9-B417-46D7-8AFD-1DDA8EFF3570
 
 ## Functional Programming
 
-### Feature List
+### `AsyncOperation` : Wrapped async operation
 
-- AsyncOperation and it's operators
-- AsyncOperationQueue
-
-### `AsyncOperation` : Wrapped async operation, provide basic functional programming unit. Provides `flatMap`, `map`, `combine` and lots of operators to manipulate the operation
+Provides basic functional programming unit and `flatMap`, `map`, `combine` and lots of operators to manipulate the operation.
 
 ```swift
 let operation1: AsyncOperation<Int> = .init {
@@ -276,6 +288,27 @@ Task {
 
 ## Other supporting features
 
-- ActorAtomic\<T\>: Locking wrapper implemented by actor.
-- AsyncStartWithSequence: `AsyncSequence` that starts with values.
-- `eraseToStream` and `eraseToThrowingStream`: Convert `AsyncSequence` to `AsyncStream`, preventing the long generics type.
+### `ActorAtomic<T>`: Locking wrapper implemented by actor
+
+```swift
+let protected = ActorAtomic<Bool>.init(value: true)
+await protected.with { print($0) }
+await protected.modify { $0 = false }
+```
+
+### `AsyncStartWithSequence`: AsyncSequence that starts with values
+
+```swift
+stream.prefix(with: [1, 2, 3])
+```
+
+### AsyncSequence `eraseToStream()` and `eraseToThrowingStream()`
+
+Convert any `AsyncSequence` to `AsyncStream`, preventing the long generics type.
+
+```swift
+let earased = stream
+  .map { ... }
+  .filter { ... }
+  .eraseToStream()
+```
