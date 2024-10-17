@@ -142,27 +142,37 @@ final public class TaskPriorityQueue<Element>: @unchecked Sendable {
       guard let (signal, token) = self?.stream.subscribe(where: { $0.id == item.id }) else {
         return
       }
-      self?.checkNext()
-      // Must await here first, then the `stream` can cast the item later.
-      for await _ in signal { break }
+      let skip = self?.checkNext(enqueuedID: id)
+      if skip == false {
+        // Must await here first, then the `stream` can cast the item later.
+        for await _ in signal { break }
+      }
       self?.markMetricsAsStart(id: id)
       token.unsubscribe()
     }
   }
 
-  private func checkNext() {
+  /// Try to dequeue the next task item and cast it to the awaiting observer.
+  /// - Parameter enqueuedID: If this function is called when an item just enqueued, we can skip the await step.
+  /// - Returns: Whether the dequeued task item is the item just enqueued.
+  @discardableResult
+  private func checkNext(enqueuedID: UUID? = nil) -> Bool {
     let next: TaskItem? = _array.write { array in
       // `isRunning` must be protected by the `write`, because this whole logic determine the `isRunning` state.
       guard isRunning == false, let next = array.dequeue() else { return nil }
       isRunning = true
       return next
     }
-    guard let next else { return }
+    guard let next else { return false }
+    if next.id == enqueuedID { return true }
 
     // cast asynchrounously, make sure the `cast` is run after `await`.
     Task {
+      await Task.yield()
       stream.cast(next)
     }
+    
+    return false
   }
 
   deinit {
