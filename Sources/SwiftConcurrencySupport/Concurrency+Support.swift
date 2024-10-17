@@ -37,8 +37,8 @@ final public class AsyncThrowingSignalStream<T>: Sendable {
     return value
   }
 
-  /// Try await a value signal, this functions won't let this stream be captured, which leads to this stream can't be
-  /// deallocated.
+  /// Try await a value signal, this functions won't let this stream be captured so this stream can be deallocated while
+  /// waiting.
   /// - Parameter signalCondition: A condition to determine whether the value is what caller waiting for.
   /// - Returns: The value.
   public func weakWait(for signalCondition: @escaping (T) -> Bool) -> () async throws -> T {
@@ -177,34 +177,41 @@ extension Task where Failure == any Error {
     waitBlock: @escaping () async throws -> Void
   ) {
     let resumed: ActorAtomic<Bool> = .init(value: false)
-    let cooperateTask = Task<Void, Never> {
+    // Timeout task.
+    Task<Void, Never> {
       do {
         try await waitBlock()
-        // Task.isCancelled - get the value or an error before timed-out.
-        // self.isCancelled - may get cancelled by other process.
-        if !Task<Never, Never>.isCancelled {
+        await resumed.modify {
+          guard $0 == false else { return }
           onTimeout?()
-          await resumed.modify { $0 = true }
+          $0 = true
           continuation.resume(throwing: TaskError.timeout)
-          self.cancel()
         }
       } catch {
-        if await resumed.value == false {
+        await resumed.modify {
+          guard $0 == false else { return }
+          $0 = true
           continuation.resume(throwing: error)
         }
       }
     }
+    // Original value task.
     Task<Void, Never> {
       do {
-        continuation.resume(returning: try await self.value)
-        await resumed.modify { $0 = true }
+        let result = try await self.value
+        await resumed.modify {
+          guard $0 == false else { return }
+          $0 = true
+          continuation.resume(returning: result)
+        }
       } catch {
-        if !self.isCancelled {
-          await resumed.modify { $0 = true }
+        await resumed.modify {
+          guard $0 == false else { return }
+          $0 = true
           continuation.resume(throwing: error)
         }
       }
-      cooperateTask.cancel()
+
     }
   }
 
