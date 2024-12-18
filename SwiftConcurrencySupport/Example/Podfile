@@ -1,11 +1,10 @@
 use_frameworks!
-platform :ios, '13.0'
+platform :ios, "13.0"
 
-target 'SwiftConcurrencySupport_Example' do
-  pod 'SwiftConcurrencySupport', :path => '../../', :testspecs => ['Tests']
+target "SwiftConcurrencySupport_Example" do
+  pod "SwiftConcurrencySupport", path: "../../", testspecs: ["Tests"]
 
-  target 'SwiftConcurrencySupport_Tests' do
+  target "SwiftConcurrencySupport_Tests" do
     inherit! :search_paths
-    
   end
 end
