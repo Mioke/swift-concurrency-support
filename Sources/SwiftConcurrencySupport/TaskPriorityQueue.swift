@@ -168,7 +168,7 @@ final public class TaskPriorityQueue<Element>: @unchecked Sendable {
 
     // cast asynchrounously, make sure the `cast` is run after `await`.
     Task {
-      await Task.yield()
+      await Task.megaYield()
       stream.cast(next)
     }
     

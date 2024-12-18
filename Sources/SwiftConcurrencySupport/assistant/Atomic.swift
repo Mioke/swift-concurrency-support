@@ -223,10 +223,8 @@ public actor ActorAtomic<T> {
 
   /// Modify the value.
   /// - Parameter action: The action to modify the value.
-  public func modify(action: (inout T) async throws -> Void) async rethrows {
-    var current = value
-    try await action(&current)
-    value = current
+  public func modify(action: @Sendable (isolated ActorAtomic<T>) async throws -> Void) async rethrows {
+    try await action(self)
   }
 
   /// Do actions with the value.

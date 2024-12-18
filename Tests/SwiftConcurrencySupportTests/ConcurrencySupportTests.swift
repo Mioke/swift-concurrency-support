@@ -12,7 +12,7 @@ import XCTest
 import os
 
 #if canImport(SwiftConcurrencySupport)
-import SwiftConcurrencySupport
+@testable import SwiftConcurrencySupport
 #endif
 
 enum InternalError: Error, Equatable {
@@ -1293,10 +1293,10 @@ class AsyncOperationQueueTestCases: XCTestCase {
       print("Running task 1")
       let result = try await queue.operation {
         print("enter operation 1")
-        await order.modify { $0.append(1) }
+        await order.modify { $0.value.append(1) }
         try await Task.sleep(for: .seconds(0.2))
         print("after sleep operation 1")
-        await order.modify { $0.append(2) }
+        await order.modify { $0.value.append(2) }
         return 1
       }
       print("Get result \(result)")
@@ -1308,10 +1308,10 @@ class AsyncOperationQueueTestCases: XCTestCase {
       print("Running task 2")
       let result = try await queue.operation {
         print("enter operation 2")
-        await order.modify { $0.append(3) }
+        await order.modify { $0.value.append(3) }
         try await Task.sleep(for: .seconds(0.1))
         print("after sleep operation 2")
-        await order.modify { $0.append(4) }
+        await order.modify { $0.value.append(4) }
         return 2
       }
       print("Get result \(result)")
@@ -1322,6 +1322,74 @@ class AsyncOperationQueueTestCases: XCTestCase {
       XCTAssert($0 == [1, 2, 3, 4])
     }
   }
+
+// NOTE: - the `AsyncOperationQueue` is not completely works as we expect, although it may get called at some time, but actually it may get running a little later. So this testOrder2() will fail by chance.
+
+  // func testOrder2() async throws {
+  //   let expectation = expectation(description: "Order")
+  //   let queue = AsyncOperationQueue()
+  //   let expects: ActorAtomic<[Int]> = .init(value: [])
+  //   // @ThreadSafe var expects: [Int] = []
+  //   let order: ActorAtomic<[Int]> = .init(value: [])
+
+  //   for i in 0..<50 {
+  //     Task {
+  //       await expects.modify { $0.value.append(i) }
+  //       // _expects.write { $0.append(i) }
+  //       _ = try await queue.operation {
+  //         try await Task.sleep(for: .seconds(0.02))
+  //         await order.modify { $0.value.append(i) }
+  //         return i
+  //       }
+
+  //       let orderValue = await order.value
+  //       if orderValue.count == 50 {
+  //         // let expectValue = expects
+  //         let expectValue = await expects.value
+
+  //         print("expectValue \(expectValue)")
+  //         print("orderValue \(orderValue)")
+
+  //         XCTAssert(orderValue == expectValue)
+  //         expectation.fulfill()
+  //       }
+  //     }
+  //   }
+
+  //   await fulfillment(of: [expectation], timeout: 2)
+  // }
+
+  // func testWTF() async throws {
+  //   let expectation = expectation(description: "WTF??")
+  //   let expects: ActorAtomic<[Int]> = .init(value: [])
+  //   let order: ActorAtomic<[Int]> = .init(value: [])
+
+  //   for i in 0..<50 {
+  //     Task {
+  //       await expects.modify { $0.value.append(i) }
+  //       let task = Task {
+  //         try await Task.sleep(for: .seconds(0.01))
+  //         await order.modify { $0.value.append(i) }
+  //         return i
+  //       }
+  //       print(await task.result)
+
+  //       let orderValue = await order.value
+  //       print("orderValue \(orderValue)")
+  //       if orderValue.count == 50 {
+  //         let expectValue = await expects.value
+
+  //         print("expectValue \(expectValue)")
+  //         print("orderValue \(orderValue)")
+
+  //         XCTAssert(orderValue == expectValue)
+  //         expectation.fulfill()
+  //       }
+  //     }
+  //   }
+
+  //   await fulfillment(of: [expectation], timeout: 2)
+  // }
 
   func testConcurrentQueue() async throws {
     let queue = AsyncOperationQueue(mode: .concurrent(limit: 2))

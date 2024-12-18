@@ -182,15 +182,15 @@ extension Task where Failure == any Error {
       do {
         try await waitBlock()
         await resumed.modify {
-          guard $0 == false else { return }
+          guard $0.value == false else { return }
           onTimeout?()
-          $0 = true
+          $0.value = true
           continuation.resume(throwing: TaskError.timeout)
         }
       } catch {
         await resumed.modify {
-          guard $0 == false else { return }
-          $0 = true
+          guard $0.value == false else { return }
+          $0.value = true
           continuation.resume(throwing: error)
         }
       }
@@ -200,14 +200,14 @@ extension Task where Failure == any Error {
       do {
         let result = try await self.value
         await resumed.modify {
-          guard $0 == false else { return }
-          $0 = true
+          guard $0.value == false else { return }
+          $0.value = true
           continuation.resume(returning: result)
         }
       } catch {
         await resumed.modify {
-          guard $0 == false else { return }
-          $0 = true
+          guard $0.value == false else { return }
+          $0.value = true
           continuation.resume(throwing: error)
         }
       }
@@ -266,3 +266,40 @@ extension Task where Success == Void, Failure == Never {
       })
   }
 }
+
+// Copy from swift-concurrency-extra
+@available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
+extension Task where Success == Never, Failure == Never {
+  /// Suspends the current task a number of times before resuming with the goal of allowing other
+  /// tasks to start their work.
+  ///
+  /// This function can be used to make flakey async tests less flakey, as described in
+  /// [this Swift Forums post](https://forums.swift.org/t/reliably-testing-code-that-adopts-swift-concurrency/57304).
+  /// You may, however, prefer to use ``withMainSerialExecutor(operation:)-79jpc`` to improve the
+  /// reliability of async tests, and to make their execution deterministic.
+  ///
+  /// > Note: When invoked from ``withMainSerialExecutor(operation:)-79jpc``, or when
+  /// > ``uncheckedUseMainSerialExecutor`` is set to `true`, `Task.megaYield()` is equivalent to
+  /// > a single `Task.yield()`.
+  static func megaYield(count: Int = _defaultMegaYieldCount) async {
+    // TODO: Investigate why mega yields are still necessary in TCA's test suite.
+    // guard !uncheckedUseMainSerialExecutor else {
+    //   await Task.yield()
+    //   return
+    // }
+    for _ in 0..<count {
+      await Task<Void, Never>.detached(priority: .background) { await Task.yield() }.value
+    }
+  }
+}
+
+/// The number of yields `Task.megaYield()` invokes by default.
+///
+/// Can be overridden by setting the `TASK_MEGA_YIELD_COUNT` environment variable.
+let _defaultMegaYieldCount = max(
+  0,
+  min(
+    ProcessInfo.processInfo.environment["TASK_MEGA_YIELD_COUNT"].flatMap(Int.init) ?? 20,
+    10_000
+  )
+)

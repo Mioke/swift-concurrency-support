@@ -233,7 +233,7 @@ extension AsyncOperation {
         if await isFinished.value == false { await handler() }
       }
       let result = try await self.start()
-      await isFinished.modify { $0 = true }
+      await isFinished.modify { $0.value = true }
       return result
     }
   }
