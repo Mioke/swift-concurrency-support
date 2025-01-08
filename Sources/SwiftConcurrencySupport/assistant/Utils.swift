@@ -101,7 +101,7 @@ public struct PriorityQueue<Element> {
 }
 
 extension Queue where T: Equatable {
-  
+
   public func contains(_ element: T) -> Bool {
     return array.contains(element)
   }
@@ -124,6 +124,16 @@ extension PriorityQueue where Element: Equatable {
       var queue = content.value
       queue.remove(element)
       partialResult[content.key] = queue
+    }
+  }
+}
+
+extension Swift.Result where Failure == Swift.Error {
+  public init(task: () async throws -> Success) async {
+    do {
+      self = .success(try await task())
+    } catch {
+      self = .failure(error)
     }
   }
 }

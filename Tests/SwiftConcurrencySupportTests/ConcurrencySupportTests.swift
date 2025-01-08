@@ -626,44 +626,32 @@ class TimeoutTestCases: XCTestCase {
 class TaskQueueTestCases: XCTestCase {
 
   func testNormal() async throws {
-    let queue = TaskQueue<Int>()
-    var tasks: [Task<Int, Error>] = []
+    let queue = TaskQueue()
+    var results: [Int] = []
     let assuming = (0..<10).reduce(into: Array<Int>.init()) { $0.append($1) }
 
     for index in assuming {
-      let task = queue.enqueueTask {
-        try! await Task.sleep(for: .seconds(0.2))
-        print("running", index)
-        return index
-      }
-      tasks.append(task)
+      queue.enqueue(
+        task: {
+          try! await Task.sleep(for: .seconds(0.02))
+          print("running", index)
+          return index
+        },
+        completion: { result in
+          if case .success(let value) = result {
+            results.append(value)
+          }
+        })
     }
 
     try await Task.sleep(for: .seconds(0.5))
     print("Start to observe.")
 
-    var results: [Int] = []
-    for task in tasks {
-      results.append(try await task.value)
-    }
-
     XCTAssert(results == assuming)
   }
 
-  func testThrowingQueue() async throws {
-    let queue = ThrowingTaskQueue<Int, Swift.Error>()
-    let task = queue.enqueueTask {
-      return .failure(NSError(domain: "1", code: 1))
-    }
-    if case .failure = try await task.value {
-      XCTAssertTrue(true)
-    } else {
-      XCTAssertTrue(false)
-    }
-  }
-
-  func testOrder() async {
-    let queue = TaskQueue<Int>()
+  func testOrder() async throws {
+    let queue = TaskQueue()
 
     var counts = 0
     let getCounts: () -> Int = {
@@ -671,35 +659,35 @@ class TaskQueueTestCases: XCTestCase {
       return counts
     }
 
-    async let result1 = queue.task {
+    async let result1 = try queue.enqueueAndWait {
       print("run 1")
       return getCounts()  // 2
     }
-    async let result2 = queue.task {
+    async let result2 = try queue.enqueueAndWait {
       print("run 2")
       return getCounts()  // 3
     }
 
     //        print(await result1, await result2)
 
-    let result3 = await queue.task {
+    let result3 = try await queue.enqueueAndWait {
       print("run 3")
       return getCounts()  // 1
     }
-    let result4 = await queue.task {
+    let result4 = try await queue.enqueueAndWait {
       print("run 4")
       return getCounts()  // 4
     }
 
     print(result3, result4)
-    print(await result2, await result1)
+    print(try await result2, try await result1)
 
     // !! REDICULOUS !!
     // run 1 and run 2 are randomly inserted between `run 3` and `run 4`
   }
 
-  func testOrder2() async {
-    let queue = TaskQueue<Int>()
+  func testOrder2() async throws {
+    let queue = TaskQueue()
 
     var counts = 0
     let getCounts: () -> Int = {
@@ -709,26 +697,26 @@ class TaskQueueTestCases: XCTestCase {
 
     var order: [Int] = []
 
-    let result1 = await queue.task {
+    let result1 = try await queue.enqueueAndWait {
       print("run 1")
       let value = getCounts()
       order.append(value)
       return value
     }
-    let result2 = await queue.task {
+    let result2 = try await queue.enqueueAndWait {
       print("run 2")
       let value = getCounts()
       order.append(value)
       return value
     }
 
-    let result3 = await queue.task {
+    let result3 = try await queue.enqueueAndWait {
       print("run 3")
       let value = getCounts()
       order.append(value)
       return value
     }
-    let result4 = await queue.task {
+    let result4 = try await queue.enqueueAndWait {
       print("run 4")
       let value = getCounts()
       order.append(value)
@@ -740,20 +728,21 @@ class TaskQueueTestCases: XCTestCase {
     XCTAssert(order == [1, 2, 3, 4])
   }
 
-  var queue: TaskQueue<Int>? = .init()
+  var queue: TaskQueue? = nil
 
   func testDeallocation1() async {
-    self.queue = TaskQueue<Int>()
+    self.queue = TaskQueue()
+    weak var tempQueue = self.queue
 
     let expect = XCTestExpectation()
     Task {
-      let result = await self.queue?.task {
+      let result = try await self.queue?.enqueueAndWait {
         do {
           try await Task.sleep(for: .seconds(0.2))
         } catch {
           print("error", error)
         }
-        XCTAssert(self.queue == nil)
+        XCTAssert(tempQueue != nil)
         return 1
       }
       XCTAssert(result == 1)
@@ -762,6 +751,7 @@ class TaskQueueTestCases: XCTestCase {
 
     Task {
       try await Task.sleep(for: .seconds(0.1))
+      self.queue?.invalidate()
       self.queue = nil
       print("set to nil")
     }
@@ -770,71 +760,67 @@ class TaskQueueTestCases: XCTestCase {
 
   func testDeallocation3() async throws {
     let expect = XCTestExpectation()
-    self.queue = TaskQueue<Int>()
-
-    let op1: () async -> Int = {
-      do { try await Task.sleep(for: .seconds(99)) } catch { print("#1 error", error) }
+    self.queue = TaskQueue()
+    weak var tempQueue = self.queue
+    let op1: @Sendable () async -> Int = {
+      do { try await Task.sleep(for: .seconds(2)) } catch { print("#1 error", error) }
       print(self.queue == nil)
       return 1
     }
-    let op2: () async -> Int = {
-      do { try await Task.sleep(for: .seconds(3)) } catch { print("#2 error", error) }
-      print(self.queue == nil)
-      return 2
+    Task {
+      let result = try await self.queue?.enqueueAndWait(op1)
+      XCTAssert(result == 1)
+    }
+    await Task.yield()
+    Task {
+      do {
+        _ = try await self.queue?.enqueueAndWait(op1)
+        XCTAssert(false)
+      } catch {
+        XCTAssert(error is CancellationError)
+      }
+      expect.fulfill()
     }
 
-    if let _ = self.queue?.enqueueTask(task: op1),
-      let task2 = self.queue?.enqueueTask(task: op2)
-    {
-
-      Task {
-        try await Task.sleep(for: .seconds(0.2))
-        weak var tempQueue = self.queue
-        self.queue = nil
-        print("set to nil", tempQueue as Any)
-      }
-      Task {
-        do {
-          print(try await task2.value)
-          XCTAssert(false)
-        } catch {
-          print("waited an error: \(error)")
-          expect.fulfill()
-        }
-      }
+    Task {
+      try await Task.sleep(for: .seconds(1))
+      self.queue?.invalidate() // this is nessary
+      self.queue = nil
     }
 
-    await fulfillment(of: [expect], timeout: 10)
+    await fulfillment(of: [expect], timeout: 3)
+    XCTAssert(tempQueue == nil)
   }
 
   func testDeallocation4() async throws {
     let expect = XCTestExpectation()
-    self.queue = TaskQueue<Int>()
+    self.queue = TaskQueue()
+    weak var tempQueue = self.queue
 
     if let queue = self.queue {
-      queue.addTask {
+      queue.enqueue {
         try! await Task.sleep(for: .seconds(0.2))
         return 1
-      } onFinished: { result in
+      } completion: { result in
         do {
           let result = try result.get()
           XCTAssert(result == 1)
         } catch {
           XCTAssert(false)
         }
-        expect.fulfill()
+        Task {
+          try await Task.sleep(for: .seconds(0.1))
+          XCTAssert(tempQueue == nil)
+          expect.fulfill()
+        }
       }
 
-      queue.addTask {
+      // The non-concurrnecy enqueue function will not capture the queue itself, so the op2 will not be executed.
+      queue.enqueue {
         try! await Task.sleep(for: .seconds(3))
         return 2
-      } onFinished: { result in
-        do {
-          _ = try result.get()
-          XCTAssert(false)
-        } catch {
-          XCTAssert(error is CancellationError)
-        }
+      } completion: { result in
+        XCTAssert(false)
       }
 
       Task {
@@ -848,23 +834,20 @@ class TaskQueueTestCases: XCTestCase {
   }
 
   func testMetricsData() async throws {
-    let queue = TaskQueue<Int>()
+    let queue = TaskQueue()
+    queue.updateMetricsConfiguration(.enabled(cacheSize: 10))
 
-    let id1 = UUID()
-    let task1 = queue.enqueueTask(id: id1) {
+    let id1 = queue.enqueue {
       try await Task.sleep(for: .seconds(0.1))
       print("\(id1) done")
       return 1
     }
 
-    let id2 = UUID()
-    let task2 = queue.enqueueTask(id: id2) {
+    let id2 = queue.enqueue {
       try await Task.sleep(for: .seconds(0.2))
       print("\(id2) done")
       return 2
     }
-
-    print(try await task1.value, try await task2.value)
 
     let met1 = queue.retreiveTaskMetrics(id: id1)
     let met2 = queue.retreiveTaskMetrics(id: id2)
@@ -877,98 +860,159 @@ class TaskQueueTestCases: XCTestCase {
 @available(iOS 16, *)
 class TaskPriorityQueueTestCases: XCTestCase {
 
-  func testPriorityQueue() async throws {
-    let expect = XCTestExpectation()
-    let queue = TaskPriorityQueue<Void>()
-    var results: [Int] = []
+  actor Results<Flag> {
+    var content: [Int] = []
+    var flag: Flag
 
-    queue.enqueueTask(priority: .medium) {
-      print("enter task 1")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(1)
+    init(flag: Flag) {
+      self.flag = flag
     }
 
-    await Task.yield()
-
-    queue.enqueueTask(priority: .low) {
-      print("enter task 3")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(3)
+    func append(_ value: Int) {
+      content.append(value)
     }
-    await Task.yield()
-    queue.enqueueTask(priority: .low) {
-      print("enter task 4")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(4)
-      expect.fulfill()
-    }
-    await Task.yield()
-    queue.enqueueTask(priority: .high) {
-      print("enter task 2")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(2)
-    }
-
-    await fulfillment(of: [expect], timeout: 2)
-    print("results: \(results)")
-    XCTAssert(results.count == 4 && results == [1, 2, 3, 4])
   }
 
-  func testSamePriority() async throws {
+  func testTaskPriorityQueueOrder() async throws {
+    let queue = TaskPriorityQueue(priority: .high)
     let expect = XCTestExpectation()
-    let queue = TaskPriorityQueue<Void>()
-    var results: [Int] = []
 
-    queue.enqueueTask {
-      print("enter task 1")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(1)
+    let results: Results<Void> = .init(flag: ())
+
+    for i in 1...10 {
+      queue.enqueue(on: results, priority: .low) { results in
+        try? await Task.sleep(for: .seconds(0.01))
+        results.append(i)
+
+        if results.content.count == 20 {
+          expect.fulfill()
+        }
+      }
     }
 
-    queue.enqueueTask {
-      print("enter task 2")
-      try await Task.sleep(for: .seconds(0.1))
-      results.append(2)
-      expect.fulfill()
+    try await Task.sleep(for: .seconds(0.001))
+
+    for i in 11...20 {
+      queue.enqueue(on: results, priority: .high) { results in
+        try? await Task.sleep(for: .seconds(0.01))
+        results.append(i)
+
+        if results.content.count == 20 {
+          expect.fulfill()
+        }
+      }
     }
+
     await fulfillment(of: [expect], timeout: 1)
-    print("results: \(results)")
-    XCTAssert(results.count == 2 && results == [1, 2])
+    let resultsContent = await results.content
+    print(resultsContent)
+    // priority high + yeild, to ensure the first enqueued task begins to run at first place.
+    XCTAssert(resultsContent == [1] + Array(11...20) + Array(2...10))
   }
 
-  var queue: TaskPriorityQueue<Void>? = nil
-  func testDeallocate() async throws {
+  func testTaskPriorityQueueStressTest1() async throws {
+    let queue = TaskPriorityQueue(priority: .high)
     let expect = XCTestExpectation()
-    self.queue = TaskPriorityQueue<Void>()
+
+    let results: Results<(Bool, Bool)> = .init(flag: (false, false))
+
     Task {
-      let task1 = queue?.enqueueTask {
-        print("enter task 1")
-        try await Task.sleep(for: .seconds(0.3))
-        XCTAssert(self.queue == nil)
+      for i in 1...10000 {
+        queue.enqueue(on: results, priority: .low) { results in
+          results.append(i)
+          if i == 10000 {
+            results.flag.0 = true
+            if results.flag.1 {
+              expect.fulfill()
+            }
+          }
+        }
+        try await Task.sleep(for: .milliseconds(1))
       }
-
-      let task2 = queue?.enqueueTask {
-        print("enter task 2")
-        XCTFail()
-      }
-
-      let error = await task2?.result.error()
-      XCTAssert(error is CancellationError)
-
-      let error1 = await task1?.result.error()
-      // The task is running won't get cancelled, so there's no error.
-      XCTAssert(error1 == nil)
-
-      expect.fulfill()
     }
 
     Task {
-      try await Task.sleep(for: .seconds(0.1))
+      for i in 10001...15000 {
+        queue.enqueue(on: results, priority: .low) { results in
+          results.append(i)
+          if i == 15000 {
+            results.flag.1 = true
+            if results.flag.0 {
+              expect.fulfill()
+            }
+          }
+        }
+        try await Task.sleep(for: .milliseconds(2))
+      }
+    }
+
+    await fulfillment(of: [expect], timeout: 25)
+    let resultsContents = await results.content
+    XCTAssert(resultsContents.count == 15000)
+  }
+
+  func testTaskPriorityQueueStressTest2() async throws {
+    let queue = TaskPriorityQueue(priority: .high)
+    let expect = XCTestExpectation()
+    let results: Results<Void> = .init(flag: ())
+
+    for i in 1...100_000 {
+      queue.enqueue(on: results, priority: PriorityQueuePriority.allCases.randomElement()!) { results in
+        results.append(results.content.last == nil ? i : results.content.last! + i)
+        if results.content.count == 100_000 {
+          expect.fulfill()
+        }
+      }
+    }
+
+    await fulfillment(of: [expect], timeout: 10)
+    let result = await results.content
+    print(result)
+    XCTAssertEqual(result.last!, 5_000_050_000)
+  }
+
+  var queue: TaskPriorityQueue? = nil
+
+  func testDeallocate() async throws {
+    self.queue = TaskPriorityQueue()
+    weak var weakQueue = self.queue
+
+    Task {
+      let t1 = try await self.queue?.enqueueAndWait(priority: .medium) {
+        print(Date(), "enter 1")
+        try await Task.sleep(for: .seconds(2))
+        print(Date(), "after sleep 1")
+        // This time point is too early that the queue hasn't been deallocated yet.
+        // XCTAssert(weakQueue == nil)
+        return 1
+      }
+      XCTAssertEqual(t1, 1)
+    }
+
+    Task {
+      try await Task.sleep(for: .seconds(1))
+      print(Date(), "set to nil")
+      self.queue?.invalidate()
       self.queue = nil
     }
 
-    await fulfillment(of: [expect], timeout: 1)
-    XCTAssert(self.queue == nil)
+    await Task.megaYield()
+
+    print(Date(), "awaiting 2")
+    do {
+      let /*t2*/ _ = try await queue?.enqueueAndWait(priority: .medium) {
+        print(Date(), "enter 2")
+        XCTAssert(false)
+        return 2
+      }
+      XCTAssert(false)
+    } catch {
+      print(Date(), "t2 should be cancelled")
+      XCTAssert(error is CancellationError)
+    }
+
+    print(Date(), "awaiting after 2")
+    XCTAssert(weakQueue == nil)
   }
 }
 
@@ -1323,7 +1367,7 @@ class AsyncOperationQueueTestCases: XCTestCase {
     }
   }
 
-// NOTE: - the `AsyncOperationQueue` is not completely works as we expect, although it may get called at some time, but actually it may get running a little later. So this testOrder2() will fail by chance.
+  // NOTE: - the `AsyncOperationQueue` is not completely works as we expect, although it may get called at some time, but actually it may get running a little later. So this testOrder2() will fail by chance.
 
   // func testOrder2() async throws {
   //   let expectation = expectation(description: "Order")

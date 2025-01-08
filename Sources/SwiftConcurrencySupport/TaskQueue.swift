@@ -8,162 +8,147 @@
 import Foundation
 
 @available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-public typealias ThrowingTaskQueue<Value, E: Swift.Error> = TaskQueue<Swift.Result<Value, E>>
+final public class TaskQueue: @unchecked Sendable {
 
-/// Run tasks one by one, FIFO.
-@available(macOS 10.15, tvOS 13.0, iOS 13.0, watchOS 6.0, *)
-final public class TaskQueue<Element>: @unchecked Sendable {
+  typealias ConcurrencyWorkTask = () async -> Void
+  private let workersContinuatoin: AsyncStream<(UUID, ConcurrencyWorkTask)>.Continuation
 
-  /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
-  public var metricsConfiguration: TaskQueue.MetricsConfiguration = .enabled(cacheSize: 10) {
-    didSet {
-      resetMetrics()
+  @ThreadSafe
+  private var finished: Bool = false
+
+  /// The initializer of `TaskPriorityQueue`.
+  /// - Parameter priority: The task priority of the task that observing enqueued signals, default is `.medium`.
+  public init(priority: TaskPriority = .medium) {
+    let (worker, workersContinuatoin) = AsyncStream<(UUID, ConcurrencyWorkTask)>.makeStream()
+    self.workersContinuatoin = workersContinuatoin
+
+    Task.detached(priority: priority) { [weak self] in
+      for await (uuid, task) in worker {
+        guard let self else { break }
+        print(Date(), "observed uuid: \(uuid)")
+        markMetricsAsStart(id: uuid)
+        await task()
+        print(Date(), "after task uuid: \(uuid)")
+        markMetricsAsEnd(id: uuid)
+      }
     }
   }
 
-  @ThreadSafe
-  private var array: [TaskItem] = []
+  @discardableResult
+  /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
+  /// - Parameters:
+  ///   - task: The task to be executed.
+  ///   - completion: The completion callback.
+  /// - Returns: The UUID of the task metrics, you can use it to retrieve the metrics from cache.
+  public func enqueue<T>(
+    task: @escaping @Sendable () async throws -> T,
+    completion: ((Result<T, Swift.Error>) -> Void)? = nil
+  ) -> UUID {
+    let uuid = UUID()
+    let task: ConcurrencyWorkTask = {
+      let result = await Result { try await task() }
+      completion?(result)
+    }
+    createMetricsAsEnqueued(id: uuid)
+    workersContinuatoin.yield((uuid, task))
+    return uuid
+  }
+
+  @discardableResult
+  /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
+  /// - Parameters:
+  ///   - isolatedActor: The actor which the task isolated in.
+  ///   - task: The task to be executed.
+  ///   - completion: The completion callback.
+  /// - Returns: The UUID of the task metrics, you can use it to retrieve the metrics from cache.
+  public func enqueue<T, ActorType: Actor>(
+    on isolatedActor: ActorType,
+    task: @escaping @Sendable (isolated ActorType) async throws -> T,
+    completion: ((Result<T, Swift.Error>) -> Void)? = nil
+  ) -> UUID {
+    let uuid = UUID()
+    let task: ConcurrencyWorkTask = { 
+      let result = await Result { try await task(isolatedActor) }
+      completion?(result)
+    }
+    createMetricsAsEnqueued(id: uuid)
+    workersContinuatoin.yield((uuid, task))
+    return uuid
+  }
+
+  /// Enqueue a task and wait for it's result.
+  /// - Parameters:
+  ///   - task: The task to be executed.
+  /// - Throws: The error thrown by the task.
+  /// - Returns: The result of the task.
+  public func enqueueAndWait<T>(
+    _ task: @escaping () async throws -> T
+  ) async throws -> T {
+    try await withUnsafeThrowingContinuation { continuation in
+      let work: ConcurrencyWorkTask = { [weak self] in
+        guard let self, !finished else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+        do {
+          continuation.resume(returning: try await task())
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+      workersContinuatoin.yield((UUID(), work))
+    }
+  }
+
+  /// Enqueue a task and wait for it's result.
+  /// - Parameters:
+  ///   - isolatedActor: The actor which the task isolated in.
+  ///   - task: The task to be executed.
+  /// - Throws: The error thrown by the task.
+  /// - Returns: The result of the task.
+  public func enqueueAndWait<T, ActorType: Actor>(
+    on isolatedActor: ActorType,
+    _ task: @escaping (isolated ActorType) async throws -> T
+  ) async throws -> T {
+    try await withUnsafeThrowingContinuation { continuation in
+      let work: ConcurrencyWorkTask = { [weak self] in
+        guard let self, !finished else {
+          continuation.resume(throwing: CancellationError())
+          return
+        }
+        do {
+          continuation.resume(returning: try await task(isolatedActor))
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+      workersContinuatoin.yield((UUID(), work))
+    }
+  }
+
+  /// Invalidate this queue and stop running next task if you are using `enqueueAndWait` function. As known that async 
+  /// function will implict capture itself and keep it until outside the function. Please call this function before 
+  /// deallocating this queue, or the queue will continue running left tasks and won't be deallocated until all tasks 
+  /// are finished.
+  public func invalidate() {
+    workersContinuatoin.finish()
+    finished = true
+    print(Date(), "invalidate")
+  }
+
+  deinit {
+    workersContinuatoin.finish()
+    print(Date(), "deinit")
+  }
+
+  // MARK: - Metrics Properties
+
+  /// The metrics configuration, default is `.enabled(cacheSize: 10)`, set `.disabled` to disable metrics.
+  public var metricsConfiguration: TaskQueue.MetricsConfiguration = .disabled
 
   let metricsLock = UnfairLock()
   private var metrics: [UUID: TaskQueue.Metrics] = [:]
   private var metricsCacheIndex: [UUID] = []
-
-  private var stream: AsyncMulticast<TaskItem> = .init()
-
-  /// The running state, protected by the `array`'s lock, not thread-safe.
-  private var isRunning: Bool = false
-
-  struct TaskItem {
-    let id: UUID
-    let originalTask: () async throws -> Element
-    let postCheck: () -> Void
-
-    func task() async throws -> Element {
-      let result = try await originalTask()
-      postCheck()
-      return result
-    }
-  }
-
-  /// The initializer of `TaskQueue`.
-  public init() {}
-
-  /// Enqueue a task and run it immediately, the finish callback will be called as non-concurrency type.
-  /// - Parameters:
-  ///   - id: Task id, for tracking purpose.
-  ///   - task: The task you want to enqueue.
-  ///   - onFinished: Finish callback closure. If the result is nil, that means the `TaskQueue` has already been
-  ///   deallocated before this task is finished.
-  public func addTask(
-    id: UUID = .init(),
-    _ task: @escaping () async throws -> Element,
-    onFinished: @escaping (Result<Element, Swift.Error>) -> Void
-  ) {
-    let item = enqueueTask(with: id, task: task)
-    Task { [weak self] in
-      await self?.waitUntilAvailable(item: item)()
-      do {
-        if self == nil { throw _Concurrency.CancellationError() }
-        onFinished(.success(try await item.task()))
-      } catch {
-        onFinished(.failure(error))
-      }
-    }
-  }
-
-  /// Enqueue a task and wait for it's result. If the task has already began, this function will return the result even
-  /// the queue is deallocated.
-  /// - Parameters:
-  ///   - id: Task id, for tracking purpose.
-  ///   - task: The task you want to enqueue.
-  /// - Returns: The task's result.
-  public func task(id: UUID = .init(), _ task: @escaping () async throws -> Element) async rethrows -> Element {
-    let item = enqueueTask(with: id, task: task)
-    // The `await`s here will capture `self` and delay the deallocation if the queue has no other owners.
-    await waitUntilAvailable(item: item)()
-    // for the `rethrows` feature, can only call the parameter task here.
-    let result = try await task()
-    item.postCheck()
-    return result
-  }
-
-  /// Enqueue a task and try to run it immediately. This function is not an async function, so the enqueueing will
-  /// not be awaited and the task will be inserted into the queue immediately.
-  /// - Parameters:
-  ///   - id: Task's id, for tracking purpose.
-  ///   - task: The task.
-  /// - Returns: The wrapped Task.
-  @discardableResult
-  public func enqueueTask(id: UUID = .init(), task: @escaping () async throws -> Element) -> Task<Element, Error> {
-    let item = enqueueTask(with: id, task: task)
-    return .init { [weak self] in
-      await self?.waitUntilAvailable(item: item)()
-      if self == nil { throw _Concurrency.CancellationError() }
-      return try await item.task()
-    }
-  }
-
-  private func enqueueTask(with id: UUID, task: @escaping () async throws -> Element) -> TaskItem {
-    let item = TaskItem(
-      id: id,
-      originalTask: task,
-      postCheck: { [weak self] in
-        guard let self else { return }
-        isRunning = false
-        markMetricsAsEnd(id: id)
-        checkNext()
-      })
-    _array.write { array in
-      array.append(item)
-      metrics(id: id)
-    }
-    return item
-  }
-
-  /// The `await` for the block returned here will immediately pass when `self` is deallocated.
-  private func waitUntilAvailable(item: TaskItem) -> () async -> Void {
-    let id = item.id
-    // weak capture `self`, otherwise if any signal is waiting, the `TaskQueue` can't be deallocated.
-    return { [weak self] in
-      guard let (signal, token) = self?.stream.subscribe(where: { $0.id == item.id }) else {
-        return
-      }
-      let skip = self?.checkNext(enqueuedID: id)
-      if skip == false {
-        // Must await here first, then the `stream` can cast the item later.
-        for await _ in signal { break }
-      }
-      self?.markMetricsAsStart(id: id)
-      token.unsubscribe()
-    }
-  }
-
-  /// Try to dequeue the next task item and cast it to the awaiting observer.
-  /// - Parameter enqueuedID: If this function is called when an item just enqueued, we can skip the await step.
-  /// - Returns: Whether the dequeued task item is the item just enqueued.
-  @discardableResult
-  private func checkNext(enqueuedID: UUID? = nil) -> Bool {
-    let next: TaskItem? = _array.write { array in
-      // `isRunning` must be protected by the `write`, because this whole logic determine the `isRunning` state.
-      guard isRunning == false, let next = array.first else { return nil }
-      array.removeFirst()
-      isRunning = true
-      return next
-    }
-    guard let next else { return false }
-    if next.id == enqueuedID { return true }
-    
-    // cast asynchrounously, make sure the `cast` is run after `await`.
-    Task {
-      await Task.megaYield()
-      stream.cast(next)
-    }
-    
-    return false
-  }
-
-  deinit {
-  }
 }
 
 // MARK: - Metrics
@@ -211,6 +196,16 @@ extension TaskQueue {
     }
   }
 
+  /// Update the metrics configuration.
+  /// - Parameter configuration: The configuration to be updated.
+  public func updateMetricsConfiguration(_ configuration: MetricsConfiguration) {
+    metricsLock.around {
+      metrics.removeAll()
+      metricsCacheIndex.removeAll()
+      metricsConfiguration = configuration
+    }
+  }
+
   func add(metrics: Metrics) {
     guard case .enabled(let metricsCacheSize) = metricsConfiguration else { return }
     metricsLock.around {
@@ -230,7 +225,7 @@ extension TaskQueue {
     metricsCacheIndex.removeAll { $0 == metricsID }
   }
 
-  func metrics(id: UUID) {
+  func createMetricsAsEnqueued(id: UUID) {
     guard metricsConfiguration != .disabled else { return }
     let metr: Metrics = .init(id: id, enqueueTime: CFAbsoluteTimeGetCurrent())
     add(metrics: metr)
