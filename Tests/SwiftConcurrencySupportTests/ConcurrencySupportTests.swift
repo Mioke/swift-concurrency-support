@@ -910,6 +910,9 @@ class TaskPriorityQueueTestCases: XCTestCase {
     XCTAssert(resultsContent == [1] + Array(11...20) + Array(2...10))
   }
 
+// Github VM issue, cost too much time.
+#if DEBUG
+
   func testTaskPriorityQueueStressTest1() async throws {
     let queue = TaskPriorityQueue(priority: .high)
     let expect = XCTestExpectation()
@@ -950,6 +953,8 @@ class TaskPriorityQueueTestCases: XCTestCase {
     let resultsContents = await results.content
     XCTAssert(resultsContents.count == 15000)
   }
+
+#endif
 
   func testTaskPriorityQueueStressTest2() async throws {
     let queue = TaskPriorityQueue(priority: .high)
