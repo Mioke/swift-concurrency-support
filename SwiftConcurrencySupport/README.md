@@ -22,7 +22,7 @@ pod 'SwiftConcurrencySupport'
 
 ## Author
 
-Klein, mioke0428@gmail.com
+Klein, <mioke0428@gmail.com>
 
 ## License
 

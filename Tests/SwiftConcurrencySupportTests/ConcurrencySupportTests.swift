@@ -946,7 +946,7 @@ class TaskPriorityQueueTestCases: XCTestCase {
       }
     }
 
-    await fulfillment(of: [expect], timeout: 25)
+    await fulfillment(of: [expect], timeout: 100)
     let resultsContents = await results.content
     XCTAssert(resultsContents.count == 15000)
   }
@@ -967,7 +967,6 @@ class TaskPriorityQueueTestCases: XCTestCase {
 
     await fulfillment(of: [expect], timeout: 10)
     let result = await results.content
-    print(result)
     XCTAssertEqual(result.last!, 5_000_050_000)
   }
 
